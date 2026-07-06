@@ -1,0 +1,17 @@
+{
+  "name": "focus",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:server": "pnpm --filter @focus/server dev",
+    "dev:desktop": "pnpm --filter @focus/desktop tauri dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:push": "pnpm --filter @focus/server db:push",
+    "db:studio": "pnpm --filter @focus/server db:studio"
+  }
+}
