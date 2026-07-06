@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { embedText, enrichPrompt, generateStructured } from "@focus/ai";
 import { Enrichment } from "@focus/shared";
 import { env } from "../config.js";
 import { db, schema } from "../db/index.js";
 import { publish } from "./bus.js";
 import { recordEvent } from "./events.js";
+import { recallMemory } from "./memory.js";
 import { bucketFor, computePriorityScore } from "./priority.js";
 import { serializeTask } from "./serialize.js";
 
@@ -22,10 +23,29 @@ export async function enrichTask(taskId: string): Promise<void> {
   const user = await db.query.users.findFirst({ where: eq(schema.users.id, task.userId) });
   const now = new Date().toLocaleString("sv-SE", { timeZone: user?.timezone ?? "UTC" });
 
+  // Context items feed re-enrichment: notes verbatim, attachments by name.
+  const context = await db.query.contextItems.findMany({
+    where: eq(schema.contextItems.taskId, taskId),
+    orderBy: [asc(schema.contextItems.createdAt)],
+  });
+  const contextItems = context.map((c) =>
+    c.kind === "text" || c.kind === "link"
+      ? c.body ?? ""
+      : `[${c.kind}${c.body ? `: ${c.body}` : ""}]`,
+  );
+
+  // Learned memory sharpens classification (entity glossary, preferences).
+  const memory = await recallMemory(task.userId, task.rawInput);
+
   const enrichment = await generateStructured(
     "enrich",
     Enrichment,
-    enrichPrompt({ rawInput: task.rawInput, now }),
+    enrichPrompt({
+      rawInput: task.rawInput,
+      now,
+      contextItems,
+      memoryContext: memory.length ? memory.map((m) => `- ${m}`).join("\n") : undefined,
+    }),
   );
 
   // Embedding failure must not fail enrichment.
@@ -45,9 +65,10 @@ export async function enrichTask(taskId: string): Promise<void> {
   const [row] = await db
     .update(schema.tasks)
     .set({
-      title: enrichment.title,
       tags: enrichment.tags,
       aiImportance: enrichment.priorityScore,
+      aiSuggestion: enrichment.nextStep,
+      ...(task.titleOverridden ? {} : { title: enrichment.title }),
       ...(task.sphereOverridden ? {} : { sphere: enrichment.sphere }),
       ...(task.dueAtOverridden ? {} : { dueAt }),
       ...(task.priorityOverridden

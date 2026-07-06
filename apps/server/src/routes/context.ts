@@ -56,7 +56,9 @@ export async function contextRoutes(app: FastifyInstance): Promise<void> {
 
     await recordEvent(req.userId, "context.added", id, { kind });
     publish(req.userId, { type: "context.added", taskId: id });
-    await enqueue("recompute-task", { taskId: id });
+    // New context can change urgency/deadline/next step → full re-enrichment
+    // (which respects every overridden field).
+    await enqueue("enrich", { taskId: id });
 
     return reply.code(201).send(serializeContextItem(row!));
   });
@@ -95,6 +97,7 @@ export async function contextRoutes(app: FastifyInstance): Promise<void> {
 
     await recordEvent(req.userId, "context.added", id, { kind: "image", size: bytes.length });
     publish(req.userId, { type: "context.added", taskId: id });
+    await enqueue("enrich", { taskId: id });
 
     return reply.code(201).send(serializeContextItem(row!));
   });

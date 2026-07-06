@@ -1,14 +1,36 @@
-import { LazyStore } from "@tauri-apps/plugin-store";
 import type { Task } from "@focus/shared";
 import { createTask } from "./api";
+import { isTauri } from "./tauri-env";
 
 /**
  * Local cache (PLAN.md §7): task snapshot for instant open + offline capture
- * queue replayed on reconnect. JSON store is enough at Phase 1 volume; the
- * interface stays if we swap to SQLite.
+ * queue replayed on reconnect. Tauri store on desktop, localStorage in a
+ * plain browser (dev). JSON is enough at Phase 1 volume; the interface stays
+ * if we swap to SQLite.
  */
 
-const store = new LazyStore("focus-cache.json");
+interface KV {
+  get<T>(key: string): Promise<T | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
+async function makeStore(): Promise<KV> {
+  if (isTauri) {
+    const { LazyStore } = await import("@tauri-apps/plugin-store");
+    return new LazyStore("focus-cache.json");
+  }
+  return {
+    async get<T>(key: string): Promise<T | undefined> {
+      const raw = localStorage.getItem(`focus.cache.${key}`);
+      return raw ? (JSON.parse(raw) as T) : undefined;
+    },
+    async set(key: string, value: unknown): Promise<void> {
+      localStorage.setItem(`focus.cache.${key}`, JSON.stringify(value));
+    },
+  };
+}
+
+const store = makeStore();
 
 export interface PendingCapture {
   clientId: string;
@@ -17,26 +39,24 @@ export interface PendingCapture {
 }
 
 export async function loadCachedTasks(): Promise<Task[]> {
-  return (await store.get<Task[]>("tasks")) ?? [];
+  return (await (await store).get<Task[]>("tasks")) ?? [];
 }
 
 export async function saveCachedTasks(tasks: Task[]): Promise<void> {
-  await store.set("tasks", tasks);
+  await (await store).set("tasks", tasks);
 }
 
 export async function queueCapture(capture: PendingCapture): Promise<void> {
-  const pending = (await store.get<PendingCapture[]>("pendingCaptures")) ?? [];
+  const kv = await store;
+  const pending = (await kv.get<PendingCapture[]>("pendingCaptures")) ?? [];
   pending.push(capture);
-  await store.set("pendingCaptures", pending);
-}
-
-export async function pendingCaptures(): Promise<PendingCapture[]> {
-  return (await store.get<PendingCapture[]>("pendingCaptures")) ?? [];
+  await kv.set("pendingCaptures", pending);
 }
 
 /** Replay queued captures; clientId makes retries idempotent server-side. */
 export async function replayPendingCaptures(): Promise<Task[]> {
-  const pending = await pendingCaptures();
+  const kv = await store;
+  const pending = (await kv.get<PendingCapture[]>("pendingCaptures")) ?? [];
   const created: Task[] = [];
   const stillPending: PendingCapture[] = [];
   for (const capture of pending) {
@@ -46,6 +66,6 @@ export async function replayPendingCaptures(): Promise<Task[]> {
       stillPending.push(capture);
     }
   }
-  await store.set("pendingCaptures", stillPending);
+  await kv.set("pendingCaptures", stillPending);
   return created;
 }

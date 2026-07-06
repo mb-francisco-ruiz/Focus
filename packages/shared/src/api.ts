@@ -61,4 +61,24 @@ export type AddContextRequest = z.infer<typeof AddContextRequest>;
 export type SyncMessage =
   | { type: "task.upserted"; task: Task }
   | { type: "task.deleted"; id: string }
-  | { type: "context.added"; taskId: string };
+  | { type: "context.added"; taskId: string }
+  | { type: "suggestion.changed" }
+  | { type: "notification"; title: string; body: string; taskId?: string };
+
+// ---- Memory ("what Focus knows about me") ------------------------------------
+
+export interface MemoryRecordInfo {
+  id: string;
+  kind: "entity" | "preference" | "pattern" | "outcome";
+  content: string;
+  createdAt: string;
+}
+
+// ---- Integrations -----------------------------------------------------------
+
+export interface IntegrationAccountInfo {
+  id: string;
+  provider: "google" | "slack";
+  externalId: string;
+  createdAt: string;
+}

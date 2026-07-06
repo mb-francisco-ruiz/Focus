@@ -2,14 +2,14 @@ import { z } from "zod";
 
 // ---- Enums ----------------------------------------------------------------
 
-export const Sphere = z.enum(["work", "personal", "family", "other"]);
+export const Sphere = z.enum(["work", "personal"]);
 export type Sphere = z.infer<typeof Sphere>;
 
 export const TaskStatus = z.enum(["inbox", "active", "waiting", "done", "archived"]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
-/** P0 = drop everything … P3 = someday. */
-export const PriorityBucket = z.enum(["P0", "P1", "P2", "P3"]);
+/** P1 = high … P3 = low. (P0 retired 2026-07-06; rows migrated to P1.) */
+export const PriorityBucket = z.enum(["P1", "P2", "P3"]);
 export type PriorityBucket = z.infer<typeof PriorityBucket>;
 
 export const ContextItemKind = z.enum(["text", "image", "link", "email", "slack_message", "calendar_event"]);
@@ -23,6 +23,8 @@ export const Task = z.object({
   /** Original natural-language input. Never modified by AI. */
   rawInput: z.string(),
   title: z.string(),
+  /** True once the user edited the title; enrichment must not rewrite it. */
+  titleOverridden: z.boolean(),
   sphere: Sphere,
   /** True once the user has manually set sphere; enrichment must not touch it. */
   sphereOverridden: z.boolean(),
@@ -35,6 +37,8 @@ export const Task = z.object({
   priorityOverridden: z.boolean(),
   /** Set when AI enrichment has completed at least once. */
   enrichedAt: z.iso.datetime().nullable(),
+  /** Short AI-suggested next step, refreshed on (re-)enrichment. */
+  aiSuggestion: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -84,6 +88,31 @@ export const Event = z.object({
 });
 export type Event = z.infer<typeof Event>;
 
+// ---- Suggestions (review queue, PLAN.md §5.3) -------------------------------
+
+export const SuggestionSource = z.enum(["gmail", "slack"]);
+export type SuggestionSource = z.infer<typeof SuggestionSource>;
+
+export const Suggestion = z.object({
+  id: z.string(),
+  userId: z.string(),
+  source: SuggestionSource,
+  /** integration_accounts row this came from. */
+  accountId: z.string(),
+  title: z.string(),
+  /** Why the AI thinks this is a task (shown in the review queue). */
+  reason: z.string(),
+  /** Excerpt of the source content (email snippet, message text). */
+  excerpt: z.string(),
+  /** Provider-side pointer (gmail message id, slack ts…). */
+  sourceRef: z.record(z.string(), z.unknown()),
+  status: z.enum(["pending", "accepted", "dismissed"]),
+  /** Task created on accept. */
+  taskId: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type Suggestion = z.infer<typeof Suggestion>;
+
 // ---- AI enrichment contract ------------------------------------------------
 
 /** Structured output the classify/enrich capability must return. */
@@ -95,5 +124,33 @@ export const Enrichment = z.object({
   priority: PriorityBucket,
   priorityScore: z.number().min(0).max(100),
   reasoning: z.string().describe("One sentence on why this priority"),
+  nextStep: z
+    .string()
+    .nullable()
+    .describe("One short actionable next step for the user, or null if obvious"),
 });
+
+/** Structured output for the distill capability (events → memory records). */
+export const Distillation = z.object({
+  records: z
+    .array(
+      z.object({
+        kind: z.enum(["entity", "preference", "pattern", "outcome"]),
+        content: z
+          .string()
+          .describe("One human-readable fact, e.g. 'Emails from newsletters@x are never tasks'"),
+      }),
+    )
+    .max(10),
+});
+export type Distillation = z.infer<typeof Distillation>;
+
+/** Structured output for the suggest capability (is this email/message a task?). */
+export const SuggestionVerdict = z.object({
+  isTask: z.boolean().describe("True only if there is a concrete action for the user"),
+  title: z.string().describe("Short imperative task title, empty string if isTask is false"),
+  reason: z.string().describe("One sentence on why this needs the user's action"),
+  confidence: z.number().min(0).max(1),
+});
+export type SuggestionVerdict = z.infer<typeof SuggestionVerdict>;
 export type Enrichment = z.infer<typeof Enrichment>;

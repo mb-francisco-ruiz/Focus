@@ -13,9 +13,22 @@
     "windows": [
       {
         "title": "Focus",
-        "width": 800,
-        "height": 600,
-        "dragDropEnabled": false
+        "width": 1200,
+        "height": 780,
+        "dragDropEnabled": false,
+        "minWidth": 900,
+        "minHeight": 600,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "windowEffects": {
+          "effects": [
+            "underWindowBackground",
+            "mica",
+            "acrylic"
+          ],
+          "state": "followsWindowActiveState"
+        }
       },
       {
         "label": "quick",
@@ -28,12 +41,35 @@
         "resizable": false,
         "skipTaskbar": true,
         "center": true,
+        "url": "index.html",
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "hudWindow",
+            "acrylic"
+          ],
+          "radius": 12
+        }
+      },
+      {
+        "label": "mini",
+        "title": "Focus Mini",
+        "width": 76,
+        "height": 76,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "shadow": false,
         "url": "index.html"
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,

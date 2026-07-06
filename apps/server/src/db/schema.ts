@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   vector,
 } from "drizzle-orm/pg-core";
 
@@ -54,9 +55,10 @@ export const tasks = pgTable(
     userId: text("user_id").notNull().references(() => users.id),
     rawInput: text("raw_input").notNull(),
     title: text("title").notNull(),
-    sphere: text("sphere", { enum: ["work", "personal", "family", "other"] })
+    titleOverridden: boolean("title_overridden").notNull().default(false),
+    sphere: text("sphere", { enum: ["work", "personal"] })
       .notNull()
-      .default("other"),
+      .default("personal"),
     sphereOverridden: boolean("sphere_overridden").notNull().default(false),
     tags: jsonb("tags").$type<string[]>().notNull().default([]),
     status: text("status", { enum: ["inbox", "active", "waiting", "done", "archived"] })
@@ -64,13 +66,17 @@ export const tasks = pgTable(
       .default("inbox"),
     dueAt: timestamp("due_at", { withTimezone: true }),
     dueAtOverridden: boolean("due_at_overridden").notNull().default(false),
-    priority: text("priority", { enum: ["P0", "P1", "P2", "P3"] }).notNull().default("P2"),
+    priority: text("priority", { enum: ["P1", "P2", "P3"] }).notNull().default("P2"),
     priorityScore: integer("priority_score").notNull().default(50),
     priorityOverridden: boolean("priority_overridden").notNull().default(false),
     /** Raw 0-100 importance from enrichment; input to the priority engine,
      *  kept separate from priorityScore so recomputes never compound. */
     aiImportance: integer("ai_importance"),
     enrichedAt: timestamp("enriched_at", { withTimezone: true }),
+    aiSuggestion: text("ai_suggestion"),
+    /** Reminder dedup markers — cleared when dueAt changes. */
+    dueSoonNotifiedAt: timestamp("due_soon_notified_at", { withTimezone: true }),
+    overdueNotifiedAt: timestamp("overdue_notified_at", { withTimezone: true }),
     /** Semantic embedding of title+rawInput (memory layer tier 2). */
     embedding: vector("embedding", { dimensions: 768 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -134,6 +140,32 @@ export const memoryRecords = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("memory_records_user_idx").on(t.userId)],
+);
+
+/** AI-suggested tasks from integrations, awaiting user review (PLAN.md §5.3). */
+export const suggestions = pgTable(
+  "suggestions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    source: text("source", { enum: ["gmail", "slack"] }).notNull(),
+    accountId: text("account_id").notNull().references(() => integrationAccounts.id),
+    title: text("title").notNull(),
+    reason: text("reason").notNull(),
+    excerpt: text("excerpt").notNull(),
+    /** Provider-side pointer; also the dedup key per account. */
+    sourceRef: jsonb("source_ref").notNull(),
+    dedupKey: text("dedup_key").notNull(),
+    status: text("status", { enum: ["pending", "accepted", "dismissed"] })
+      .notNull()
+      .default("pending"),
+    taskId: text("task_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("suggestions_user_status_idx").on(t.userId, t.status),
+    uniqueIndex("suggestions_dedup_idx").on(t.accountId, t.dedupKey),
+  ],
 );
 
 /**

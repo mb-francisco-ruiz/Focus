@@ -71,8 +71,15 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       .set({
         ...rest,
         ...(dueAt !== undefined
-          ? { dueAt: dueAt ? new Date(dueAt) : null, dueAtOverridden: true }
+          ? {
+              dueAt: dueAt ? new Date(dueAt) : null,
+              dueAtOverridden: true,
+              // new deadline → reminders may fire again
+              dueSoonNotifiedAt: null,
+              overdueNotifiedAt: null,
+            }
           : {}),
+        ...(patch.title !== undefined ? { titleOverridden: true } : {}),
         ...(patch.sphere !== undefined ? { sphereOverridden: true } : {}),
         ...(patch.priority !== undefined ? { priorityOverridden: true } : {}),
         updatedAt: new Date(),

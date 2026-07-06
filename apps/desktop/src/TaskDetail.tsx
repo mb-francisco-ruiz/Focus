@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ContextItem, PriorityBucket, Sphere, Task, UpdateTaskRequest } from "@focus/shared";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ContextItem, Sphere, Task, UpdateTaskRequest } from "@focus/shared";
 import { addNote, attachmentUrl, getContext, uploadImage } from "./api";
-import { PRIORITY_COLORS } from "./colors";
+import { PRIORITIES, PRIORITY_LABELS } from "./colors";
 import { onSyncMessage } from "./sync";
 
-const PRIORITIES: PriorityBucket[] = ["P0", "P1", "P2", "P3"];
-const SPHERES: Sphere[] = ["work", "personal", "family", "other"];
+const SPHERES: Sphere[] = ["work", "personal"];
 
 export default function TaskDetail({
   task,
@@ -19,6 +18,9 @@ export default function TaskDetail({
   const [items, setItems] = useState<ContextItem[]>([]);
   const [note, setNote] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(task.title);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const refreshContext = useCallback(() => {
     getContext(task.id).then(setItems).catch(() => setItems([]));
@@ -30,6 +32,17 @@ export default function TaskDetail({
       if (msg.type === "context.added" && msg.taskId === task.id) refreshContext();
     });
   }, [task.id, refreshContext]);
+
+  useEffect(() => {
+    if (editingTitle) titleRef.current?.select();
+  }, [editingTitle]);
+
+  const commitTitle = () => {
+    setEditingTitle(false);
+    const title = titleDraft.trim();
+    if (title && title !== task.title) onPatch({ title });
+    else setTitleDraft(task.title);
+  };
 
   const submitNote = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +74,33 @@ export default function TaskDetail({
       onDrop={(e) => void onDrop(e)}
     >
       <div className="detail-head">
-        <h2>{task.title}</h2>
+        {editingTitle ? (
+          <input
+            ref={titleRef}
+            className="title-edit"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitTitle();
+              if (e.key === "Escape") {
+                setTitleDraft(task.title);
+                setEditingTitle(false);
+              }
+            }}
+          />
+        ) : (
+          <h2
+            title="Double-click to edit"
+            onDoubleClick={() => {
+              setTitleDraft(task.title);
+              setEditingTitle(true);
+            }}
+          >
+            {task.title}
+            {task.titleOverridden && <span className="pinned" title="Edited by you">📌</span>}
+          </h2>
+        )}
         <button className="link" onClick={onClose}>
           ✕
         </button>
@@ -69,16 +108,22 @@ export default function TaskDetail({
 
       {task.rawInput !== task.title && <p className="raw">“{task.rawInput}”</p>}
 
+      {task.aiSuggestion && (
+        <div className="suggestion">
+          <span className="suggestion-label">✦ AI · next step</span>
+          <p>{task.aiSuggestion}</p>
+        </div>
+      )}
+
       <div className="controls">
         <div className="control-row">
           {PRIORITIES.map((p) => (
             <button
               key={p}
-              className={`chip ${task.priority === p ? "active" : ""}`}
-              style={task.priority === p ? { background: PRIORITY_COLORS[p], color: "#fff" } : {}}
+              className={`chip prio-chip ${p} ${task.priority === p ? "active" : ""}`}
               onClick={() => onPatch({ priority: p })}
             >
-              {p}
+              {PRIORITY_LABELS[p]}
             </button>
           ))}
           {task.priorityOverridden && <span className="pinned" title="Pinned — AI won't change it">📌</span>}
@@ -107,12 +152,20 @@ export default function TaskDetail({
               }
             />
           </label>
-          <button className="chip" onClick={() => onPatch({ status: "waiting" })}>
-            waiting
-          </button>
-          <button className="chip" onClick={() => onPatch({ status: "archived" })}>
-            archive
-          </button>
+          {task.status !== "done" ? (
+            <>
+              <button className="chip" onClick={() => onPatch({ status: "waiting" })}>
+                waiting
+              </button>
+              <button className="chip" onClick={() => onPatch({ status: "archived" })}>
+                archive
+              </button>
+            </>
+          ) : (
+            <button className="chip" onClick={() => onPatch({ status: "inbox" })}>
+              reopen
+            </button>
+          )}
         </div>
         {task.tags.length > 0 && <p className="tags">{task.tags.map((t) => `#${t}`).join(" ")}</p>}
       </div>
@@ -133,7 +186,7 @@ export default function TaskDetail({
 
       <form className="note" onSubmit={submitNote}>
         <input
-          placeholder="Add a note… (or drop an image anywhere)"
+          placeholder="Add a note… the AI re-analyzes with it"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />

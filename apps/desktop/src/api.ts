@@ -1,6 +1,9 @@
 import type {
   AuthResponse,
   ContextItem,
+  IntegrationAccountInfo,
+  MemoryRecordInfo,
+  Suggestion,
   Task,
   TaskListResponse,
   UpdateTaskRequest,
@@ -8,23 +11,32 @@ import type {
 
 const BASE_URL = import.meta.env.VITE_FOCUS_API_URL ?? "http://localhost:3001";
 
-let token: string | null = localStorage.getItem("focus.token");
+let token: string | null = null;
+
+/** Re-reads localStorage when unset: secondary windows (quick, mini) load at
+ *  app start and must pick up a login that happened in the main window. */
+function authToken(): string | null {
+  if (!token) token = localStorage.getItem("focus.token");
+  return token;
+}
 
 export function isLoggedIn(): boolean {
-  return token !== null;
+  return authToken() !== null;
 }
 
 export function wsUrl(): string {
   const ws = BASE_URL.replace(/^http/, "ws");
-  return `${ws}/ws?token=${encodeURIComponent(token ?? "")}`;
+  return `${ws}/ws?token=${encodeURIComponent(authToken() ?? "")}`;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Only JSON string bodies get the JSON content type — FormData sets its
+      // own boundary, and body-less POSTs must not claim a JSON body.
+      ...(typeof init?.body === "string" ? { "Content-Type": "application/json" } : {}),
+      ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
       ...init?.headers,
     },
   });
@@ -87,5 +99,64 @@ export async function uploadImage(taskId: string, file: File): Promise<ContextIt
 
 export function attachmentUrl(attachmentKey: string): string {
   // <img> tags can't send Authorization headers; Phase 2 switches to signed URLs.
-  return `${BASE_URL}/attachments/${attachmentKey}?token=${encodeURIComponent(token ?? "")}`;
+  return `${BASE_URL}/attachments/${attachmentKey}?token=${encodeURIComponent(authToken() ?? "")}`;
+}
+
+// ---- Suggestions (review queue) ---------------------------------------------
+
+export async function listSuggestions(): Promise<Suggestion[]> {
+  const res = await request<{ suggestions: Suggestion[] }>("/suggestions");
+  return res.suggestions;
+}
+
+export async function acceptSuggestion(id: string): Promise<Task> {
+  return request<Task>(`/suggestions/${id}/accept`, { method: "POST" });
+}
+
+export async function dismissSuggestion(id: string): Promise<void> {
+  await fetch(`${BASE_URL}/suggestions/${id}/dismiss`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${authToken()}` },
+  });
+}
+
+// ---- Integrations -----------------------------------------------------------
+
+export async function listIntegrations(): Promise<{
+  accounts: IntegrationAccountInfo[];
+  googleConfigured: boolean;
+  slackConfigured: boolean;
+}> {
+  return request("/integrations");
+}
+
+export async function disconnectIntegration(id: string): Promise<void> {
+  await fetch(`${BASE_URL}/integrations/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${authToken()}` },
+  });
+}
+
+/** Browser URL that starts the Google OAuth flow for this session. */
+export function googleConnectUrl(): string {
+  return `${BASE_URL}/integrations/google/connect?token=${encodeURIComponent(authToken() ?? "")}`;
+}
+
+/** Browser URL that starts the Slack OAuth flow for this session. */
+export function slackConnectUrl(): string {
+  return `${BASE_URL}/integrations/slack/connect?token=${encodeURIComponent(authToken() ?? "")}`;
+}
+
+// ---- Memory -------------------------------------------------------------------
+
+export async function listMemory(): Promise<MemoryRecordInfo[]> {
+  const res = await request<{ records: MemoryRecordInfo[] }>("/memory");
+  return res.records;
+}
+
+export async function deleteMemoryRecord(id: string): Promise<void> {
+  await fetch(`${BASE_URL}/memory/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${authToken()}` },
+  });
 }

@@ -1,5 +1,7 @@
-import type { Task } from "@focus/shared";
+import type { PriorityBucket, Task } from "@focus/shared";
 import type { schema } from "../db/index.js";
+
+export const PRIORITY_ORDER: Record<PriorityBucket, number> = { P1: 0, P2: 1, P3: 2 };
 
 type TaskRow = typeof schema.tasks.$inferSelect;
 
@@ -9,6 +11,7 @@ export function serializeTask(row: TaskRow): Task {
     userId: row.userId,
     rawInput: row.rawInput,
     title: row.title,
+    titleOverridden: row.titleOverridden,
     sphere: row.sphere,
     sphereOverridden: row.sphereOverridden,
     tags: row.tags,
@@ -19,6 +22,7 @@ export function serializeTask(row: TaskRow): Task {
     priorityScore: row.priorityScore,
     priorityOverridden: row.priorityOverridden,
     enrichedAt: row.enrichedAt?.toISOString() ?? null,
+    aiSuggestion: row.aiSuggestion,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

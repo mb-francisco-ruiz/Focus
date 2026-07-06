@@ -1,0 +1,102 @@
+import { useCallback, useEffect, useState } from "react";
+import type { IntegrationAccountInfo } from "@focus/shared";
+import { disconnectIntegration, googleConnectUrl, listIntegrations, slackConnectUrl } from "./api";
+import { isTauri } from "./tauri-env";
+
+async function openExternal(url: string): Promise<void> {
+  if (isTauri) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } else {
+    window.open(url, "_blank");
+  }
+}
+
+/** Settings card: connected accounts + connect buttons. */
+export default function Integrations() {
+  const [accounts, setAccounts] = useState<IntegrationAccountInfo[]>([]);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [slackReady, setSlackReady] = useState(false);
+
+  const refresh = useCallback(() => {
+    listIntegrations()
+      .then(({ accounts, googleConfigured, slackConfigured }) => {
+        setAccounts(accounts);
+        setGoogleReady(googleConfigured);
+        setSlackReady(slackConfigured);
+      })
+      .catch(() => setAccounts([]));
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    // OAuth finishes in the browser; re-check when the app regains focus.
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refresh]);
+
+  const googleAccounts = accounts.filter((a) => a.provider === "google");
+  const slackAccounts = accounts.filter((a) => a.provider === "slack");
+
+  return (
+    <section className="settings-card">
+      <h2>Integrations</h2>
+      <div className="settings-row">
+        <span className="settings-label">Google (Gmail + Calendar)</span>
+        <span className="settings-value">
+          {googleReady ? (
+            <button className="chip" onClick={() => void openExternal(googleConnectUrl())}>
+              + Connect account
+            </button>
+          ) : (
+            <span className="soon">needs GOOGLE_CLIENT_ID/SECRET</span>
+          )}
+        </span>
+      </div>
+      {googleAccounts.map((a) => (
+        <div className="settings-row" key={a.id}>
+          <span className="settings-label connected">{a.externalId}</span>
+          <span className="settings-value">
+            <button
+              className="link"
+              onClick={() => {
+                void disconnectIntegration(a.id).then(refresh);
+              }}
+            >
+              Disconnect
+            </button>
+          </span>
+        </div>
+      ))}
+      <div className="settings-row">
+        <span className="settings-label">Slack</span>
+        <span className="settings-value">
+          {slackReady ? (
+            <button className="chip" onClick={() => void openExternal(slackConnectUrl())}>
+              + Connect workspace
+            </button>
+          ) : (
+            <span className="soon">needs custom Slack app</span>
+          )}
+        </span>
+      </div>
+      {slackAccounts.map((a) => (
+        <div className="settings-row" key={a.id}>
+          <span className="settings-label connected">
+            Slack · {a.externalId} <span className="soon">react 👀 to capture</span>
+          </span>
+          <span className="settings-value">
+            <button
+              className="link"
+              onClick={() => {
+                void disconnectIntegration(a.id).then(refresh);
+              }}
+            >
+              Disconnect
+            </button>
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}

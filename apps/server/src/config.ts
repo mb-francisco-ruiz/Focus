@@ -19,6 +19,16 @@ const Env = z.object({
   AUTH_USERNAME: z.string().min(1),
   AUTH_PASSWORD: z.string().min(1),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+
+  /** Where browsers reach this server (OAuth redirects, Slack events). */
+  PUBLIC_URL: z.string().default("http://localhost:3001"),
+  // Google OAuth (Phase 2) — integration routes 503 until set.
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Custom Slack app (Phase 2).
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof Env>;

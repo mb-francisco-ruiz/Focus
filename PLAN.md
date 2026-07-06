@@ -227,3 +227,14 @@ Kotlin + Jetpack Compose against the existing API (OpenAPI-generated client), FC
 | 3 | Slack | **Custom Slack app** — Sign in with Slack for auth + user-token scopes to read messages (2026-07-06) |
 | 4 | Gmail ingestion | **AI auto-suggest from day one**, gated by a review queue (2026-07-06) |
 | 5 | Memory | **Memory layer in core**: event log from Phase 1, embeddings + distilled profile by Phase 3 (2026-07-06) |
+| 6 | Spheres | **Two spheres only: work / personal** — family & other folded into personal (2026-07-06) |
+| 7 | UI | **Dark theme only**, sidebar layout (Inbox / Today / Completed / Memory / Settings), priority-grouped lists (2026-07-06) |
+| 8 | Context → AI | Adding context **re-runs full enrichment** (priority, deadline, next-step suggestion), respecting all user-pinned fields (2026-07-06) |
+| 9 | Interim auth | Single credential pair via AUTH_USERNAME/AUTH_PASSWORD env vars until Phase 2 OAuth (2026-07-06) |
+| 10 | Priorities | **Three tiers: High / Medium / Low** (P1-P3 internally; P0 retired). Tinted chips, no group headers, sort by score (2026-07-06) |
+| 11 | Navigation | **Roadmap** (open + completed per sphere column) with indented To Do / Completed sub-views; Suggestions review queue as its own section (2026-07-06) |
+| 12 | Vibrancy | Semi-transparent native theme, user-adjustable via Settings slider (--glass-level) (2026-07-06) |
+| 13 | Deployment | Server live on Railway: https://server-production-5bac.up.railway.app (Dockerfile at repo root, `railway up --service server`) (2026-07-06) |
+| 14 | AI models | Free-tier Gemini key: everything routes to flash/flash-lite (pro quota = 0). Revisit digest/distill → pro when billing is enabled (2026-07-06) |
+| 15 | Queue isolation | Dev and prod share Railway Redis; BullMQ prefix `bull-dev` locally vs default in prod so workers can't steal each other's jobs (2026-07-06) |
+| 16 | Mini mode | Clicking the sidebar logo shrinks the app to a floating always-on-top orb (own frameless window): click → quick capture + search + recent list (image drop attaches context); task click restores the full app; notifications/suggestions surface as speech bubbles while shrunk (2026-07-06) |

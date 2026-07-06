@@ -41,7 +41,6 @@ export function computePriorityScore(input: {
 }
 
 export function bucketFor(score: number): PriorityBucket {
-  if (score >= 90) return "P0";
   if (score >= 70) return "P1";
   if (score >= 40) return "P2";
   return "P3";

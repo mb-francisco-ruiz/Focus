@@ -4,7 +4,7 @@
  * never a code change in callers.
  */
 
-export type Capability = "classify" | "enrich" | "prioritize" | "digest";
+export type Capability = "classify" | "enrich" | "prioritize" | "digest" | "suggest" | "distill";
 
 export interface CapabilityRoute {
   provider: "google"; // extend union as adapters are added: | "openai" | "anthropic"
@@ -15,7 +15,11 @@ const DEFAULT_ROUTES: Record<Capability, CapabilityRoute> = {
   classify: { provider: "google", model: "gemini-2.5-flash" },
   enrich: { provider: "google", model: "gemini-2.5-flash" },
   prioritize: { provider: "google", model: "gemini-2.5-flash" },
-  digest: { provider: "google", model: "gemini-2.5-pro" },
+  // digest/distill would prefer gemini-2.5-pro, but the current API key is
+  // free-tier (pro quota = 0). Flip via FOCUS_AI_ROUTE_* env once on billing.
+  digest: { provider: "google", model: "gemini-2.5-flash" },
+  suggest: { provider: "google", model: "gemini-2.5-flash-lite" },
+  distill: { provider: "google", model: "gemini-2.5-flash" },
 };
 
 /** Env override: FOCUS_AI_ROUTE_CLASSIFY="google:gemini-2.5-pro" */

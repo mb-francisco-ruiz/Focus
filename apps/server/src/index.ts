@@ -1,7 +1,13 @@
 import { buildApp } from "./app.js";
 import { env } from "./config.js";
 import { closeDb, ensureExtensions } from "./db/index.js";
-import { jobs, scheduleNightlyRecompute, startWorker } from "./lib/queue.js";
+import {
+  jobs,
+  scheduleGmailPoll,
+  scheduleNightlyRecompute,
+  scheduleProactivity,
+  startWorker,
+} from "./lib/queue.js";
 
 const app = await buildApp();
 
@@ -10,6 +16,8 @@ await ensureExtensions();
 // Worker runs in-process while we're a single service (PLAN.md §3.2).
 const worker = startWorker(app.log);
 await scheduleNightlyRecompute();
+await scheduleGmailPoll();
+await scheduleProactivity();
 
 await app.listen({ port: env.PORT, host: "0.0.0.0" });
 
