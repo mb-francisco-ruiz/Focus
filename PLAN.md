@@ -139,9 +139,9 @@ Key rules:
 ## 5. Key flows
 
 ### 5.1 Capture → enrich
-1. User hits global hotkey / quick-add, types: *"remind Marta about the school form before Friday"*.
+1. User hits global hotkey / quick-add, types: *"remind Coni about the school form before Friday"*.
 2. Client POSTs raw text (+ any dropped files) → task created instantly in `inbox` with the raw text. **Capture never waits on AI.**
-3. Server enqueues `enrich` job → AI orchestrator classifies (sphere: family), extracts entities (Marta, school form), infers due date (this Friday), proposes priority.
+3. Server enqueues `enrich` job → AI orchestrator classifies (sphere: family), extracts entities (Coni, school form), infers due date (this Friday), proposes priority.
 4. Enrichment lands as a patch; clients get it via WebSocket. UI shows AI-filled fields as suggestions the user can tap to override.
 
 ### 5.2 Priority engine
@@ -173,7 +173,7 @@ Three tiers, all in Postgres:
 1. **Event log (raw, append-only).** Every meaningful action is an `Event` row: `(user, type, entity, payload, ts)`. Cheap to write, never deleted, and the ground truth everything else is derived from. This ships in Phase 1 — *you can't backfill what you didn't record.*
 2. **Embeddings (semantic recall).** Tasks, context items and memory records get pgvector embeddings. Enables "similar past tasks", dedup ("you already have a task for this email"), and retrieval for prompts.
 3. **Distilled profile (learned memory).** A nightly/periodic background job runs AI over recent events and maintains `MemoryRecord`s — small, structured, human-readable facts with provenance:
-   - *Entities:* "Marta = daughter, school-related tasks are family/P1."
+   - *Entities:* "Coni = daughter, school-related tasks are family/P1."
    - *Preferences:* "User always bumps tax-related tasks to P0." "Dismisses task suggestions from newsletter senders."
    - *Patterns:* "Reviews inbox ~8:30; deep work Tue/Thu mornings — don't schedule nudges then."
    - *Outcomes:* "Tasks tagged 'call X' usually complete same-day; 'write doc' tasks slip ~3 days" → feeds priority/ETA realism.
@@ -208,8 +208,11 @@ Natural-language capture (global hotkey + quick-add), AI enrichment pipeline via
 **Phase 2 — Integrations (3–4 wks)**
 Custom Slack app (Sign in with Slack, shortcut + reaction capture, thread context), Google OAuth multi-account, Calendar read + event awareness, Gmail watch + **AI auto-suggested tasks with review queue**, integration settings UI.
 
-**Phase 3 — Proactivity & memory (3–4 wks)**
-Reminder scheduler, morning digest, native notifications, email fallback, nudges on stale/slipping tasks. Memory distillation job + retrieval into AI prompts, "what Focus knows about me" screen, suggestion precision tuning from accept/dismiss history.
+**Phase 3 — Proactivity & memory ✅ complete (2026-07-07)**
+Reminder scheduler, morning digest, native + Android/FCM notifications, nudges on stale/slipping tasks. Memory distillation + retrieval into AI prompts, **Intelligence** screen (behaviour instructions, learned entities, editable/deletable Memories). Review queue fed by Gmail + Slack digest, precision-tuned to reject marketing/automated mail. Gmail real-time via Pub/Sub push (hourly poll fallback). Language-preserving enrichment. Deferred niceties: email fallback for offline notifications, per-user digest times, Calendar event-awareness in the priority engine.
+
+**Phase 3.5 — Assistant, calendar & routines ✅ complete (2026-07-07)**
+Three "personal assistant" upgrades: (1) **Ask Focus** — a conversational, tool-calling layer (`POST /chat`) that reads and manages tasks/routines/memory scoped to the user; desktop shows it as a bottom chat bar, the mini orb's right-click "Chat" field seeds a message that opens the app and auto-sends. (2) **Real Google Calendar integration + AI day-planning** — `GET /calendar` merges events across linked Google accounts; `POST /today/plan` schedules open tasks into free gaps; a new **Today** page renders an hourly timetable. (3) **Configurable recurring tasks** — a **Routines** page + CRUD (`/routines`) with daily/weekly/monthly cadence, spawned by an hourly `routines-run` job. Also: user-flagged **blocked** tasks (sink below same-priority peers). Deferred: two-way calendar write-back, drag-to-edit plan blocks, streaming chat responses.
 
 **Phase 4 — Android (later)**
 Kotlin + Jetpack Compose against the existing API (OpenAPI-generated client), FCM push, share-sheet capture ("share to Focus" from any app).
@@ -234,7 +237,11 @@ Kotlin + Jetpack Compose against the existing API (OpenAPI-generated client), FC
 | 10 | Priorities | **Three tiers: High / Medium / Low** (P1-P3 internally; P0 retired). Tinted chips, no group headers, sort by score (2026-07-06) |
 | 11 | Navigation | **Roadmap** (open + completed per sphere column) with indented To Do / Completed sub-views; Suggestions review queue as its own section (2026-07-06) |
 | 12 | Vibrancy | Semi-transparent native theme, user-adjustable via Settings slider (--glass-level) (2026-07-06) |
-| 13 | Deployment | Server live on Railway: https://server-production-5bac.up.railway.app (Dockerfile at repo root, `railway up --service server`) (2026-07-06) |
+| 13 | Deployment | Self-hosted (Dockerfile at repo root; e.g. Railway via `railway up --service server`). See SETUP.md; set `PUBLIC_URL` to your deploy (2026-07-06) |
 | 14 | AI models | Free-tier Gemini key: everything routes to flash/flash-lite (pro quota = 0). Revisit digest/distill → pro when billing is enabled (2026-07-06) |
 | 15 | Queue isolation | Dev and prod share Railway Redis; BullMQ prefix `bull-dev` locally vs default in prod so workers can't steal each other's jobs (2026-07-06) |
 | 16 | Mini mode | Clicking the sidebar logo shrinks the app to a floating always-on-top orb (own frameless window): click → quick capture + search + recent list (image drop attaches context); task click restores the full app; notifications/suggestions surface as speech bubbles while shrunk (2026-07-06) |
+| 17 | Intelligence | Memory page rebranded **Intelligence**: per-sphere behaviour instructions (users.preferences, injected into enrich+suggest prompts), learned-entity cards with manual teach, distilled records. Subtasks added to the domain (own table, progress in rows). In-task AI suggestion expands to what/why/when (2026-07-06) |
+| 18 | Gemini quota | Free tier = 20 req/day on gemini-2.5-flash — exhausted same-day by ambient AI. **Billing on the Gemini key is required** for real usage (2026-07-06) |
+| 19 | Accounts | DB-backed users: open registration (username+password, scrypt-hashed), no validation by design (internal, 2 users). All data user-keyed → any client. Avatar upload behind FileStorage interface (Postgres now, S3 when AWS_* env set) (2026-07-06) |
+| 20 | Categories | Spheres are **user-defined** (Settings → Categories, defaults work/personal, 1–8). Drive AI classification (never invents new ones), columns, toggles, behaviour cards. Deleting one reassigns its tasks to the first remaining (2026-07-06) |

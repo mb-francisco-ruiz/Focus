@@ -10,6 +10,7 @@
     "dev:server": "pnpm --filter @focus/server dev",
     "kill:server": "lsof -ti :3001 | xargs kill 2>/dev/null || echo 'port 3001 already free'",
     "dev:desktop": "pnpm --filter @focus/desktop tauri dev",
+    "android:build": "gradle -p apps/android :app:assembleDebug",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "db:push": "pnpm --filter @focus/server db:push",

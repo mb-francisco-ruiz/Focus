@@ -2,7 +2,8 @@ import { z } from "zod";
 
 // ---- Enums ----------------------------------------------------------------
 
-export const Sphere = z.enum(["work", "personal"]);
+/** Free-form category name from the user's spheres list (defaults: work, personal). */
+export const Sphere = z.string().min(1).max(40);
 export type Sphere = z.infer<typeof Sphere>;
 
 export const TaskStatus = z.enum(["inbox", "active", "waiting", "done", "archived"]);
@@ -35,13 +36,55 @@ export const Task = z.object({
   priority: PriorityBucket,
   priorityScore: z.number().min(0).max(100),
   priorityOverridden: z.boolean(),
+  /** User-flagged blocked; sorts below same-priority peers. */
+  blocked: z.boolean(),
   /** Set when AI enrichment has completed at least once. */
   enrichedAt: z.iso.datetime().nullable(),
   /** Short AI-suggested next step, refreshed on (re-)enrichment. */
   aiSuggestion: z.string().nullable(),
+  /** Expanded suggestion (what / why / when), shown on click. */
+  aiSuggestionDetail: z
+    .object({ what: z.string(), why: z.string(), when: z.string() })
+    .nullable(),
+  subtaskCount: z.number(),
+  subtaskDone: z.number(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
+
+// ---- Routines (recurring tasks) --------------------------------------------
+
+export const Cadence = z.enum(["daily", "weekly", "monthly"]);
+export type Cadence = z.infer<typeof Cadence>;
+
+export const Routine = z.object({
+  id: z.string(),
+  userId: z.string(),
+  title: z.string(),
+  sphere: Sphere,
+  priority: PriorityBucket,
+  cadence: Cadence,
+  /** Every N days/weeks/months. */
+  interval: z.number().int().min(1).max(52),
+  /** 0–6 (Mon–Sun) for weekly; null otherwise. */
+  weekday: z.number().int().min(0).max(6).nullable(),
+  /** 1–31 for monthly; null otherwise. */
+  dayOfMonth: z.number().int().min(1).max(31).nullable(),
+  active: z.boolean(),
+  nextRunAt: z.iso.datetime(),
+  lastSpawnedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type Routine = z.infer<typeof Routine>;
+
+export const Subtask = z.object({
+  id: z.string(),
+  taskId: z.string(),
+  title: z.string(),
+  done: z.boolean(),
+  createdAt: z.iso.datetime(),
+});
+export type Subtask = z.infer<typeof Subtask>;
 export type Task = z.infer<typeof Task>;
 
 export const ContextItem = z.object({
@@ -70,6 +113,8 @@ export const EventType = z.enum([
   "task.sphere_overridden",
   "task.due_overridden",
   "context.added",
+  "subtask.added",
+  "subtask.completed",
   "suggestion.created",
   "suggestion.accepted",
   "suggestion.dismissed",
@@ -120,14 +165,14 @@ export const Enrichment = z.object({
   title: z.string().describe("Short imperative title for the task"),
   sphere: Sphere,
   tags: z.array(z.string()).max(5),
-  dueAt: z.iso.datetime().nullable().describe("Inferred due date, null if none"),
+  // offset:true — the enrich prompt asks for a local UTC offset (not "Z") so
+  // "end of day" lands on the right calendar day; the schema must accept it.
+  dueAt: z.iso.datetime({ offset: true }).nullable().describe("Inferred due date, null if none"),
   priority: PriorityBucket,
   priorityScore: z.number().min(0).max(100),
   reasoning: z.string().describe("One sentence on why this priority"),
-  nextStep: z
-    .string()
-    .nullable()
-    .describe("One short actionable next step for the user, or null if obvious"),
+  // nextStep suggestions removed 2026-07-06 (user: not useful yet).
+  // Task.aiSuggestion* fields remain in the schema for old rows; always null now.
 });
 
 /** Structured output for the distill capability (events → memory records). */

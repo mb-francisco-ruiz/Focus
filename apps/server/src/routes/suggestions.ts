@@ -39,6 +39,12 @@ export async function suggestionRoutes(app: FastifyInstance): Promise<void> {
     return { suggestions: rows.map(serialize) };
   });
 
+  /** Manual inbox scan — enqueues a Gmail poll scoped to this user. */
+  app.post("/suggestions/scan", async (req, reply) => {
+    await enqueue("gmail-poll", { pollUserId: req.userId });
+    return reply.code(202).send({ queued: true });
+  });
+
   /** Accept: becomes a real task through the normal capture+enrich pipeline. */
   app.post("/suggestions/:id/accept", async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -49,6 +55,13 @@ export async function suggestionRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: "suggestion not found or already reviewed" });
     }
 
+    // If the source account is linked to a category, file the task there and
+    // pin it so enrichment won't reclassify.
+    const account = await db.query.integrationAccounts.findFirst({
+      where: eq(schema.integrationAccounts.id, suggestion.accountId),
+    });
+    const linkedSphere = (account?.settings as { sphere?: string } | undefined)?.sphere;
+
     const [task] = await db
       .insert(schema.tasks)
       .values({
@@ -56,6 +69,7 @@ export async function suggestionRoutes(app: FastifyInstance): Promise<void> {
         userId: req.userId,
         rawInput: `${suggestion.title}\n(from ${suggestion.source}: ${suggestion.excerpt})`,
         title: suggestion.title,
+        ...(linkedSphere ? { sphere: linkedSphere, sphereOverridden: true } : {}),
       })
       .returning();
     await db.insert(schema.contextItems).values({

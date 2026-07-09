@@ -2,8 +2,8 @@ import { and, cosineDistance, desc, eq, gte, sql } from "drizzle-orm";
 import { ulid } from "ulid";
 import { distillPrompt, embedText, generateStructured } from "@focus/ai";
 import { Distillation } from "@focus/shared";
-import { env } from "../config.js";
 import { db, schema } from "../db/index.js";
+import { aiKeyFor } from "./ai-key.js";
 
 const DAY_MS = 86_400_000;
 
@@ -13,10 +13,10 @@ const DAY_MS = 86_400_000;
  * deleted facts don't get re-derived.
  */
 export async function distillMemory(): Promise<void> {
-  if (!env.GOOGLE_GENERATIVE_AI_API_KEY) return;
-
   const users = await db.query.users.findMany();
   for (const user of users) {
+    const key = await aiKeyFor(user.id);
+    if (!key) continue; // this user has no AI configured
     const since = new Date(Date.now() - 7 * DAY_MS);
     const events = await db.query.events.findMany({
       where: and(eq(schema.events.userId, user.id), gte(schema.events.createdAt, since)),
@@ -38,10 +38,11 @@ export async function distillMemory(): Promise<void> {
         ),
         existingRecords: existing.map((r) => `[${r.kind}] ${r.content}`),
       }),
+      { apiKey: key },
     );
 
     for (const record of records) {
-      const embedding = await embedText(record.content).catch(() => null);
+      const embedding = await embedText(record.content, key).catch(() => null);
       await db.insert(schema.memoryRecords).values({
         id: ulid(),
         userId: user.id,
@@ -83,8 +84,9 @@ export async function recallMemory(
     ...(opts.kind ? [eq(schema.memoryRecords.kind, opts.kind)] : []),
   );
 
-  if (query && env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    const queryEmbedding = await embedText(query).catch(() => null);
+  const key = query ? await aiKeyFor(userId) : null;
+  if (query && key) {
+    const queryEmbedding = await embedText(query, key).catch(() => null);
     if (queryEmbedding) {
       const rows = await db
         .select({ content: schema.memoryRecords.content })

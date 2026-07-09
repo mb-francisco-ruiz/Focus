@@ -1,24 +1,28 @@
 import { asc, eq } from "drizzle-orm";
 import { embedText, enrichPrompt, generateStructured } from "@focus/ai";
 import { Enrichment } from "@focus/shared";
-import { env } from "../config.js";
 import { db, schema } from "../db/index.js";
+import { aiKeyFor } from "./ai-key.js";
 import { publish } from "./bus.js";
 import { recordEvent } from "./events.js";
 import { recallMemory } from "./memory.js";
 import { bucketFor, computePriorityScore } from "./priority.js";
 import { serializeTask } from "./serialize.js";
+import { countsFor } from "./subtask-counts.js";
 
 /**
- * Async enrichment (PLAN.md §5.1): runs on the job queue after capture;
- * patches only fields the user has not overridden, then pushes the delta
- * to connected clients.
+ * Build the enrichment prompt for a task (classification context: user prefs,
+ * recalled memory, attached context). Shared by the server path (below) and the
+ * local path (`GET /tasks/:id/enrich-request`). `forLocal` appends an explicit
+ * JSON-output contract since local execution can't rely on generateObject's
+ * schema enforcement. Returns null if the task no longer exists.
  */
-export async function enrichTask(taskId: string): Promise<void> {
-  if (!env.GOOGLE_GENERATIVE_AI_API_KEY) return; // AI not configured yet
-
+export async function buildEnrichPrompt(
+  taskId: string,
+  opts: { forLocal?: boolean } = {},
+): Promise<{ prompt: string; userId: string } | null> {
   const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
-  if (!task) return;
+  if (!task) return null;
 
   const user = await db.query.users.findFirst({ where: eq(schema.users.id, task.userId) });
   const now = new Date().toLocaleString("sv-SE", { timeZone: user?.timezone ?? "UTC" });
@@ -34,22 +38,42 @@ export async function enrichTask(taskId: string): Promise<void> {
       : `[${c.kind}${c.body ? `: ${c.body}` : ""}]`,
   );
 
-  // Learned memory sharpens classification (entity glossary, preferences).
+  // Learned memory + user behaviour instructions sharpen classification.
   const memory = await recallMemory(task.userId, task.rawInput);
+  const prefs = user?.preferences ?? {};
+  const memoryLines = [
+    ...Object.entries(prefs)
+      .filter(([, text]) => text)
+      .map(([sphere, text]) => `${sphere} instructions from the user: ${text}`),
+    ...memory,
+  ];
 
-  const enrichment = await generateStructured(
-    "enrich",
-    Enrichment,
-    enrichPrompt({
-      rawInput: task.rawInput,
-      now,
-      contextItems,
-      memoryContext: memory.length ? memory.map((m) => `- ${m}`).join("\n") : undefined,
-    }),
-  );
+  const spheres = user?.spheres?.length ? user.spheres : ["work", "personal"];
+  let prompt = enrichPrompt({
+    rawInput: task.rawInput,
+    now,
+    spheres,
+    contextItems,
+    memoryContext: memoryLines.length ? memoryLines.map((m) => `- ${m}`).join("\n") : undefined,
+  });
 
-  // Embedding failure must not fail enrichment.
-  const embedding = await embedText(`${enrichment.title}\n${task.rawInput}`).catch(() => null);
+  if (opts.forLocal) {
+    prompt += `\n\nRespond with ONLY a JSON object — no prose, no markdown fences — of exactly this shape:
+{"title": string, "sphere": one of [${spheres.join(", ")}], "tags": string[] (max 5), "dueAt": ISO 8601 datetime with UTC offset (not "Z") or null, "priority": "P1" | "P2" | "P3", "priorityScore": number 0-100, "reasoning": string}`;
+  }
+
+  return { prompt, userId: task.userId };
+}
+
+/**
+ * Apply a validated Enrichment to a task: honor user overrides, rescore, embed
+ * (best-effort), persist, and broadcast. Shared by the server and local paths.
+ */
+export async function applyEnrichment(taskId: string, enrichment: Enrichment): Promise<void> {
+  const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
+  if (!task) return;
+  const user = await db.query.users.findFirst({ where: eq(schema.users.id, task.userId) });
+  const spheres = user?.spheres?.length ? user.spheres : ["work", "personal"];
 
   const dueAt = task.dueAtOverridden
     ? task.dueAt
@@ -62,18 +86,28 @@ export async function enrichTask(taskId: string): Promise<void> {
     aiScore: enrichment.priorityScore,
   });
 
+  // Embedding needs the Gemini API (local Claude can't embed) — best-effort via
+  // whatever key the user has; skipped silently when none, degrading recall to recency.
+  const embedKey = await aiKeyFor(task.userId);
+  const embedding = embedKey
+    ? await embedText(`${enrichment.title}\n${task.rawInput}`, embedKey).catch(() => null)
+    : null;
+
   const [row] = await db
     .update(schema.tasks)
     .set({
       tags: enrichment.tags,
       aiImportance: enrichment.priorityScore,
-      aiSuggestion: enrichment.nextStep,
+      // suggestions disabled — clear any stale ones as tasks re-enrich
+      aiSuggestion: null,
+      aiSuggestionDetail: null,
       ...(task.titleOverridden ? {} : { title: enrichment.title }),
-      ...(task.sphereOverridden ? {} : { sphere: enrichment.sphere }),
-      ...(task.dueAtOverridden ? {} : { dueAt }),
-      ...(task.priorityOverridden
+      // model must pick from the user's categories; fall back to the first
+      ...(task.sphereOverridden
         ? {}
-        : { priority: bucketFor(score), priorityScore: score }),
+        : { sphere: spheres.includes(enrichment.sphere) ? enrichment.sphere : spheres[0]! }),
+      ...(task.dueAtOverridden ? {} : { dueAt }),
+      ...(task.priorityOverridden ? {} : { priority: bucketFor(score), priorityScore: score }),
       ...(embedding ? { embedding } : {}),
       enrichedAt: new Date(),
       updatedAt: new Date(),
@@ -82,5 +116,24 @@ export async function enrichTask(taskId: string): Promise<void> {
     .returning();
 
   await recordEvent(task.userId, "task.enriched", taskId, { enrichment });
-  publish(task.userId, { type: "task.upserted", task: serializeTask(row!) });
+  publish(task.userId, {
+    type: "task.upserted",
+    task: serializeTask(row!, await countsFor(taskId)),
+  });
+}
+
+/**
+ * Server-side enrichment (PLAN.md §5.1): the queue path. Builds the prompt,
+ * runs the model on the user's key, applies the result. No-ops when the task
+ * is gone, already enriched, or the user has no AI configured.
+ */
+export async function enrichTask(taskId: string): Promise<void> {
+  const built = await buildEnrichPrompt(taskId);
+  if (!built) return;
+
+  const apiKey = await aiKeyFor(built.userId);
+  if (!apiKey) return; // AI not configured for this user
+
+  const enrichment = await generateStructured("enrich", Enrichment, built.prompt, { apiKey });
+  await applyEnrichment(taskId, enrichment);
 }

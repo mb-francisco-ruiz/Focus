@@ -107,6 +107,72 @@ export async function accessTokenFor(account: AccountRow): Promise<string> {
   return tokens.access_token;
 }
 
+/**
+ * Real-time inbox push (PLAN.md §5.3): register a Gmail watch so new mail
+ * publishes to our Pub/Sub topic instead of us polling. Expires in ~7 days —
+ * renewed by a daily job. Best-effort; polling remains the fallback.
+ */
+export async function watchInbox(token: string): Promise<boolean> {
+  if (!env.GMAIL_PUBSUB_TOPIC) return false;
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/watch", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ topicName: env.GMAIL_PUBSUB_TOPIC, labelIds: ["INBOX"] }),
+  });
+  return res.ok;
+}
+
+// ---- Calendar ---------------------------------------------------------------
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string; // ISO
+  end: string; // ISO
+  allDay: boolean;
+  account: string;
+}
+
+/** Events between timeMin/timeMax (ISO) from the account's primary calendar. */
+export async function listEvents(
+  token: string,
+  account: string,
+  timeMin: string,
+  timeMax: string,
+): Promise<CalendarEvent[]> {
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "50",
+  });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error(`calendar list failed: ${res.status}`);
+  const data = (await res.json()) as {
+    items?: {
+      id: string;
+      summary?: string;
+      status?: string;
+      start?: { dateTime?: string; date?: string };
+      end?: { dateTime?: string; date?: string };
+    }[];
+  };
+  return (data.items ?? [])
+    .filter((e) => e.status !== "cancelled" && (e.start?.dateTime || e.start?.date))
+    .map((e) => ({
+      id: e.id,
+      title: e.summary ?? "(no title)",
+      start: e.start!.dateTime ?? `${e.start!.date}T00:00:00.000Z`,
+      end: e.end?.dateTime ?? e.end?.date ? (e.end!.dateTime ?? `${e.end!.date}T00:00:00.000Z`) : e.start!.dateTime ?? "",
+      allDay: !e.start!.dateTime,
+      account,
+    }));
+}
+
 // ---- Gmail ------------------------------------------------------------------
 
 export interface GmailMessage {
@@ -117,10 +183,12 @@ export interface GmailMessage {
   internalDate: number;
 }
 
-/** Recent inbox messages (personal-inbox category, newest first). */
-export async function recentMessages(token: string, max = 15): Promise<GmailMessage[]> {
+/** Inbox messages from the last 24h (personal-inbox category, newest first). */
+export async function recentMessages(token: string, max = 25): Promise<GmailMessage[]> {
   const list = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent("in:inbox category:primary newer_than:2d")}`,
+    // NOTE: category:primary matches nothing on accounts without Gmail tabs
+    // (most Workspace accounts) — use negative filters instead.
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${max}&q=${encodeURIComponent("in:inbox newer_than:1d -category:promotions -category:social")}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!list.ok) throw new Error(`gmail list failed: ${list.status}`);

@@ -16,6 +16,10 @@ async function windowLabel(): Promise<string> {
 
 const label = await windowLabel();
 
+// Per-window CSS hooks (e.g. color-scheme only on main — it breaks WKWebView
+// transparency on the orb/quick windows).
+document.documentElement.classList.add(`window-${label}`);
+
 // Native window vibrancy (macOS) / mica (Windows) shows through semi-transparent
 // surfaces; plain-browser dev keeps the solid dark fallback.
 if (isTauri) {

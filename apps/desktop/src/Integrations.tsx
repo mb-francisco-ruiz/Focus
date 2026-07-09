@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { IntegrationAccountInfo } from "@focus/shared";
-import { disconnectIntegration, googleConnectUrl, listIntegrations, slackConnectUrl } from "./api";
+import {
+  disconnectIntegration,
+  getProfile,
+  googleConnectUrl,
+  listIntegrations,
+  setIntegrationSphere,
+  slackConnectUrl,
+} from "./api";
 import { isTauri } from "./tauri-env";
 
 async function openExternal(url: string): Promise<void> {
@@ -15,6 +22,7 @@ async function openExternal(url: string): Promise<void> {
 /** Settings card: connected accounts + connect buttons. */
 export default function Integrations() {
   const [accounts, setAccounts] = useState<IntegrationAccountInfo[]>([]);
+  const [spheres, setSpheres] = useState<string[]>([]);
   const [googleReady, setGoogleReady] = useState(false);
   const [slackReady, setSlackReady] = useState(false);
 
@@ -30,10 +38,16 @@ export default function Integrations() {
 
   useEffect(() => {
     refresh();
+    void getProfile().then((p) => setSpheres(p.spheres)).catch(() => {});
     // OAuth finishes in the browser; re-check when the app regains focus.
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [refresh]);
+
+  const linkSphere = (id: string, sphere: string | null) => {
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, sphere } : a)));
+    void setIntegrationSphere(id, sphere).catch(() => refresh());
+  };
 
   const googleAccounts = accounts.filter((a) => a.provider === "google");
   const slackAccounts = accounts.filter((a) => a.provider === "slack");
@@ -56,7 +70,20 @@ export default function Integrations() {
       {googleAccounts.map((a) => (
         <div className="settings-row" key={a.id}>
           <span className="settings-label connected">{a.externalId}</span>
-          <span className="settings-value">
+          <span className="settings-value account-controls">
+            <select
+              className="sphere-select"
+              title="File emails from this account under this category"
+              value={a.sphere ?? ""}
+              onChange={(e) => linkSphere(a.id, e.target.value || null)}
+            >
+              <option value="">no category</option>
+              {spheres.map((s) => (
+                <option key={s} value={s}>
+                  → {s}
+                </option>
+              ))}
+            </select>
             <button
               className="link"
               onClick={() => {

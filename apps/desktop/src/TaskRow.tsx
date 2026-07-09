@@ -4,19 +4,24 @@ import { PRIORITY_LABELS } from "./colors";
 
 export default function TaskRow({
   task,
-  selected,
+  expanded,
   hideSphere = false,
-  onSelect,
+  onToggleExpand,
   onToggleDone,
   onRename,
+  onContextMenu,
+  children,
 }: {
   task: Task;
-  selected: boolean;
+  expanded: boolean;
   /** Inside a work/personal column the sphere is redundant. */
   hideSphere?: boolean;
-  onSelect: () => void;
+  onToggleExpand: () => void;
   onToggleDone: () => void;
   onRename: (title: string) => void;
+  onContextMenu?: (x: number, y: number) => void;
+  /** Inline detail, rendered expanded below the row. */
+  children?: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.title);
@@ -35,56 +40,70 @@ export default function TaskRow({
   };
 
   return (
-    <li className={`${selected ? "selected" : ""} ${done ? "done" : ""}`} onClick={onSelect}>
-      <button
-        className={`check ${done ? "checked" : ""}`}
-        title={done ? "Reopen" : "Done"}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleDone();
+    <li className={`${expanded ? "expanded" : ""} ${done ? "done" : ""}`}>
+      <div
+        className="task-row"
+        onClick={onToggleExpand}
+        onContextMenu={(e) => {
+          if (!onContextMenu) return;
+          e.preventDefault();
+          onContextMenu(e.clientX, e.clientY);
         }}
       >
-        {done ? "✓" : ""}
-      </button>
-      <span className={`priority ${task.priority}`}>{PRIORITY_LABELS[task.priority]}</span>
-      {editing ? (
-        <input
-          ref={inputRef}
-          className="title-edit"
-          value={draft}
-          onClick={(e) => e.stopPropagation()}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") {
-              setDraft(task.title);
-              setEditing(false);
-            }
-          }}
-        />
-      ) : (
-        <span
-          className="title"
-          title="Double-click to edit"
-          onDoubleClick={(e) => {
+        <button
+          className={`check ${done ? "checked" : ""}`}
+          title={done ? "Reopen" : "Done"}
+          onClick={(e) => {
             e.stopPropagation();
-            setDraft(task.title);
-            setEditing(true);
+            onToggleDone();
           }}
         >
-          {task.title}
+          {done ? "✓" : ""}
+        </button>
+        <span className={`priority ${task.priority}`}>{PRIORITY_LABELS[task.priority]}</span>
+        {task.status === "active" && <span className="progress-tag">in progress</span>}
+        {task.blocked && <span className="blocked-tag">blocked</span>}
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="title-edit"
+            value={draft}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setDraft(task.title);
+                setEditing(false);
+              }
+            }}
+          />
+        ) : (
+          <span
+            className="title"
+            title="Double-click to edit"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setDraft(task.title);
+              setEditing(true);
+            }}
+          >
+            {task.title}
+          </span>
+        )}
+        <span className="meta">
+          {[
+            hideSphere ? null : task.sphere,
+            task.subtaskCount > 0 ? `${task.subtaskDone}/${task.subtaskCount}` : null,
+            task.dueAt ? `due ${new Date(task.dueAt).toLocaleDateString()}` : null,
+            !task.enrichedAt && !done ? "classifying…" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
-      )}
-      <span className="meta">
-        {[
-          hideSphere ? null : task.sphere,
-          task.dueAt ? `due ${new Date(task.dueAt).toLocaleDateString()}` : null,
-          !task.enrichedAt && !done ? "classifying…" : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </span>
+      </div>
+      {expanded && children}
     </li>
   );
 }

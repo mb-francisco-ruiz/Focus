@@ -1,6 +1,6 @@
 import { buildApp } from "./app.js";
 import { env } from "./config.js";
-import { closeDb, ensureExtensions } from "./db/index.js";
+import { closeDb, ensureExtensions, ensureSchema } from "./db/index.js";
 import {
   jobs,
   scheduleGmailPoll,
@@ -12,6 +12,7 @@ import {
 const app = await buildApp();
 
 await ensureExtensions();
+await ensureSchema();
 
 // Worker runs in-process while we're a single service (PLAN.md §3.2).
 const worker = startWorker(app.log);

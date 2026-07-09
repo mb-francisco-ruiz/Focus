@@ -5,7 +5,10 @@ export const PRIORITY_ORDER: Record<PriorityBucket, number> = { P1: 0, P2: 1, P3
 
 type TaskRow = typeof schema.tasks.$inferSelect;
 
-export function serializeTask(row: TaskRow): Task {
+export function serializeTask(
+  row: TaskRow,
+  subtasks: { total: number; done: number } = { total: 0, done: 0 },
+): Task {
   return {
     id: row.id,
     userId: row.userId,
@@ -21,8 +24,12 @@ export function serializeTask(row: TaskRow): Task {
     priority: row.priority,
     priorityScore: row.priorityScore,
     priorityOverridden: row.priorityOverridden,
+    blocked: row.blocked,
     enrichedAt: row.enrichedAt?.toISOString() ?? null,
     aiSuggestion: row.aiSuggestion,
+    aiSuggestionDetail: row.aiSuggestionDetail ?? null,
+    subtaskCount: subtasks.total,
+    subtaskDone: subtasks.done,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

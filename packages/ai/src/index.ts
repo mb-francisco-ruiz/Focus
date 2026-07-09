@@ -4,4 +4,7 @@ export { enrichPrompt } from "./prompts/enrich.js";
 export { suggestPrompt } from "./prompts/suggest.js";
 export { distillPrompt } from "./prompts/distill.js";
 export { digestPrompt } from "./prompts/digest.js";
+export { slackDigestPrompt } from "./prompts/slack-digest.js";
+export { planDayPrompt } from "./prompts/plan.js";
 export { embedText, EMBEDDING_DIMENSIONS } from "./embeddings.js";
+export { runAssistant, type AssistantTool, type AssistantMessage } from "./assistant.js";

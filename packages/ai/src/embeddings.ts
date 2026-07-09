@@ -9,9 +9,9 @@ import { embed } from "ai";
 export const EMBEDDING_DIMENSIONS = 768;
 const EMBEDDING_MODEL = "text-embedding-004";
 
-export async function embedText(text: string): Promise<number[]> {
+export async function embedText(text: string, apiKey?: string): Promise<number[]> {
   const google = createGoogleGenerativeAI({
-    apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    apiKey: apiKey ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY,
   });
   const { embedding } = await embed({
     model: google.textEmbeddingModel(EMBEDDING_MODEL),

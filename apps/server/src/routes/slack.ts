@@ -2,7 +2,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { and, eq } from "drizzle-orm";
 import { ulid } from "ulid";
+import { SlackDigestSettingsRequest, type SlackDigestInfo } from "@focus/shared";
 import { env } from "../config.js";
+import { decrypt } from "../lib/crypto.js";
+import { latestSlackDigest } from "../lib/slack-digest.js";
 import { db, schema } from "../db/index.js";
 import { enqueue } from "../lib/queue.js";
 import {
@@ -10,9 +13,26 @@ import {
   CAPTURE_EMOJI,
   credentialsFor,
   exchangeCode,
+  memberChannels,
   slackConfigured,
 } from "../lib/slack.js";
 import { resultPage } from "./integrations.js";
+
+/** Digest rows store JSON; older rows may hold plain markdown (wrap as one section). */
+function parseDigestContent(content: string): {
+  summary: string;
+  sections: SlackDigestInfo["sections"];
+} {
+  try {
+    const parsed = JSON.parse(content) as { summary?: string; sections?: SlackDigestInfo["sections"] };
+    if (parsed && typeof parsed.summary === "string" && Array.isArray(parsed.sections)) {
+      return { summary: parsed.summary, sections: parsed.sections };
+    }
+  } catch {
+    /* legacy markdown */
+  }
+  return { summary: content, sections: [] };
+}
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -90,6 +110,76 @@ export async function slackRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     return reply.code(200).send();
+  });
+
+  const slackAccountFor = async (userId: string) =>
+    db.query.integrationAccounts.findFirst({
+      where: and(
+        eq(schema.integrationAccounts.userId, userId),
+        eq(schema.integrationAccounts.provider, "slack"),
+      ),
+    });
+
+  /** Latest digest + exclusion settings for the Settings section. */
+  app.get("/slack/digest", { onRequest: [app.authenticate] }, async (req, reply) => {
+    const account = await slackAccountFor(req.userId);
+    if (!account) return reply.code(404).send({ error: "no slack account connected" });
+    const digest = await latestSlackDigest(req.userId);
+    const settings = account.settings as {
+      digestExcludedChannels?: string[];
+      digestError?: string | null;
+    };
+    return {
+      digest: digest
+        ? ({
+            date: digest.date,
+            ...parseDigestContent(digest.content),
+            createdAt: digest.createdAt.toISOString(),
+          } satisfies SlackDigestInfo)
+        : null,
+      excludedChannels: settings.digestExcludedChannels ?? [],
+      lastError: settings.digestError ?? null,
+    };
+  });
+
+  /** Public channels the user is in — feeds the exclusion picker. */
+  app.get("/slack/channels", { onRequest: [app.authenticate] }, async (req, reply) => {
+    const account = await slackAccountFor(req.userId);
+    if (!account) return reply.code(404).send({ error: "no slack account connected" });
+    try {
+      const token = decrypt((account.credentials as { userToken: string }).userToken);
+      return { channels: await memberChannels(token) };
+    } catch (err) {
+      if (String(err).includes("missing_scope")) {
+        return reply.code(409).send({ error: "reconnect_required" });
+      }
+      throw err;
+    }
+  });
+
+  /**
+   * Generate the digest. Default = only if today's is missing (called on app
+   * startup); force = the manual refresh button. Runs on the queue; the
+   * client polls GET /slack/digest and gets a notification when done.
+   */
+  app.post("/slack/digest/refresh", { onRequest: [app.authenticate] }, async (req, reply) => {
+    const account = await slackAccountFor(req.userId);
+    if (!account) return reply.code(404).send({ error: "no slack account connected" });
+    const { force } = (req.body ?? {}) as { force?: boolean };
+    await enqueue("slack-digest", { digest: { userId: req.userId, force: force === true } });
+    return reply.code(202).send({ queued: true });
+  });
+
+  app.put("/slack/digest/settings", { onRequest: [app.authenticate] }, async (req, reply) => {
+    const { excludedChannels } = SlackDigestSettingsRequest.parse(req.body);
+    const account = await slackAccountFor(req.userId);
+    if (!account) return reply.code(404).send({ error: "no slack account connected" });
+    const settings = { ...(account.settings as object), digestExcludedChannels: excludedChannels };
+    await db
+      .update(schema.integrationAccounts)
+      .set({ settings })
+      .where(eq(schema.integrationAccounts.id, account.id));
+    return { excludedChannels };
   });
 
   /** Browser entry point (same pattern as Google). */

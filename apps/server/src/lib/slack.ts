@@ -20,10 +20,12 @@ export function slackConfigured(): boolean {
  */
 const USER_SCOPES = [
   "channels:history",
+  "channels:read", // digest: list public channels
   "groups:history",
   "im:history",
   "mpim:history",
   "reactions:read",
+  "users:read", // digest: resolve author names
 ].join(",");
 
 export function authUrl(state: string): string {
@@ -140,4 +142,76 @@ export async function captureFromReaction(input: {
   await recordEvent(account.userId, "context.added", task!.id, { kind: "slack_message" });
   await enqueue("enrich", { taskId: task!.id });
   publish(account.userId, { type: "task.upserted", task: serializeTask(task!) });
+}
+
+
+// ---- Digest helpers -----------------------------------------------------------
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+}
+
+/**
+ * Public channels the user is a member of (user tokens can only read those).
+ * Paginates fully — big workspaces have far more than one page of channels.
+ */
+export async function memberChannels(token: string): Promise<SlackChannel[]> {
+  const out: SlackChannel[] = [];
+  let cursor = "";
+  do {
+    const data = await slackApi<{
+      channels: { id: string; name: string; is_member: boolean }[];
+      response_metadata?: { next_cursor?: string };
+    }>(token, "conversations.list", {
+      types: "public_channel",
+      exclude_archived: "true",
+      limit: "1000",
+      ...(cursor ? { cursor } : {}),
+    });
+    for (const c of data.channels) {
+      if (c.is_member) out.push({ id: c.id, name: c.name });
+    }
+    cursor = data.response_metadata?.next_cursor ?? "";
+  } while (cursor);
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function channelHistory(
+  token: string,
+  channel: string,
+  oldest: number,
+  limit = 100,
+): Promise<{ user?: string; text?: string; ts: string; subtype?: string }[]> {
+  const data = await slackApi<{
+    messages: { user?: string; text?: string; ts: string; subtype?: string }[];
+  }>(token, "conversations.history", {
+    channel,
+    oldest: String(oldest),
+    limit: String(limit),
+  });
+  return data.messages;
+}
+
+/** Workspace URL (e.g. https://acme.slack.com/) for building permalinks. No scope needed. */
+export async function workspaceUrl(token: string): Promise<string | null> {
+  try {
+    const data = await slackApi<{ url?: string }>(token, "auth.test", {});
+    return data.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** id → display name for the whole workspace (one call, cached per run). */
+export async function memberNames(token: string): Promise<Map<string, string>> {
+  const data = await slackApi<{
+    members: { id: string; profile?: { display_name?: string; real_name?: string } }[];
+  }>(token, "users.list", { limit: "200" });
+  return new Map(
+    data.members.map((m) => [
+      m.id,
+      m.profile?.display_name || m.profile?.real_name || m.id,
+    ]),
+  );
 }

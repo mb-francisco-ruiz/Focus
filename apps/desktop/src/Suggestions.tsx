@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Suggestion } from "@focus/shared";
-import { acceptSuggestion, dismissSuggestion, listSuggestions } from "./api";
+import { acceptSuggestion, dismissSuggestion, listSuggestions, scanInbox } from "./api";
 import { onSyncMessage } from "./sync";
+
+// The scan runs server-side on the queue regardless of this view; the pending
+// flag lives in localStorage so leaving/returning to the tab doesn't reset it.
+const SCAN_KEY = "focus.scanPendingSince";
+const SCAN_TIMEOUT = 60_000;
 
 /**
  * Review queue (PLAN.md §5.3): AI-suggested tasks from Gmail/Slack.
@@ -9,6 +14,17 @@ import { onSyncMessage } from "./sync";
  */
 export default function Suggestions({ onCountChange }: { onCountChange: (n: number) => void }) {
   const [items, setItems] = useState<Suggestion[]>([]);
+  const [scanSince, setScanSince] = useState<number>(() => {
+    const v = Number(localStorage.getItem(SCAN_KEY) ?? 0);
+    return Number.isFinite(v) && Date.now() - v < SCAN_TIMEOUT ? v : 0;
+  });
+  const scanning = scanSince > 0;
+
+  const setScan = (ts: number) => {
+    setScanSince(ts);
+    if (ts) localStorage.setItem(SCAN_KEY, String(ts));
+    else localStorage.removeItem(SCAN_KEY);
+  };
 
   const refresh = useCallback(() => {
     listSuggestions()
@@ -22,9 +38,31 @@ export default function Suggestions({ onCountChange }: { onCountChange: (n: numb
   useEffect(() => {
     refresh();
     return onSyncMessage((msg) => {
-      if (msg.type === "suggestion.changed") refresh();
+      if (msg.type === "suggestion.changed" || msg.type === "suggestion.new") {
+        setScan(0); // results arrived
+        refresh();
+      }
     });
   }, [refresh]);
+
+  // Clear the pending flag once the scan window lapses (a scan that finds
+  // nothing new emits no WS message — the "Inbox scan finished" notification
+  // still tells the user server-side).
+  useEffect(() => {
+    if (!scanSince) return;
+    const left = SCAN_TIMEOUT - (Date.now() - scanSince);
+    const t = window.setTimeout(() => setScan(0), Math.max(0, left));
+    return () => window.clearTimeout(t);
+  }, [scanSince]);
+
+  const scan = async () => {
+    setScan(Date.now());
+    try {
+      await scanInbox();
+    } catch {
+      setScan(0);
+    }
+  };
 
   const review = async (s: Suggestion, accept: boolean) => {
     setItems((prev) => {
@@ -44,6 +82,9 @@ export default function Suggestions({ onCountChange }: { onCountChange: (n: numb
     <>
       <header className="content-head">
         <h1>Suggestions</h1>
+        <button className="chip" disabled={scanning} onClick={() => void scan()}>
+          {scanning ? "Scanning…" : "Scan inbox"}
+        </button>
       </header>
       <div className="suggestions">
         {items.map((s) => (

@@ -23,7 +23,7 @@
         "hiddenTitle": true,
         "windowEffects": {
           "effects": [
-            "underWindowBackground",
+            "hudWindow",
             "mica",
             "acrylic"
           ],
@@ -54,8 +54,8 @@
       {
         "label": "mini",
         "title": "Focus Mini",
-        "width": 76,
-        "height": 76,
+        "width": 61,
+        "height": 61,
         "visible": false,
         "decorations": false,
         "transparent": true,

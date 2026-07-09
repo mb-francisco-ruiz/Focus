@@ -13,7 +13,7 @@ things that will make future task classification, prioritisation and email/messa
 screening smarter FOR THIS USER.
 
 Kinds:
-- entity: who/what recurring names refer to ("Marta = daughter; school topics are personal")
+- entity: who/what recurring names refer to ("Coni = daughter; school topics are personal")
 - preference: how the user wants things handled ("Always bumps tax-related tasks to High",
   "Dismisses suggestions from newsletter senders")
 - pattern: behavioural regularities ("Completes Slack-captured tasks same-day")
@@ -24,6 +24,8 @@ Rules:
 - Nothing speculative, nothing sensitive (health, politics, relationships) unless
   the user explicitly made a task about it.
 - Do not repeat or rephrase existing memory. Return an empty list if nothing new.
+- Write each record in the language the user writes their tasks in (match the
+  activity below); keep entity names and quoted phrases verbatim.
 
 Existing memory:
 ${input.existingRecords.length ? input.existingRecords.map((r) => `- ${r}`).join("\n") : "(none)"}

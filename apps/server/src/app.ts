@@ -3,15 +3,22 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
+import { openApiDocument } from "@focus/shared";
 import { ZodError } from "zod";
 import { env, isDev } from "./config.js";
 import { authRoutes } from "./routes/auth.js";
 import { attachmentRoutes, contextRoutes } from "./routes/context.js";
+import { deviceRoutes } from "./routes/devices.js";
+import { calendarRoutes } from "./routes/calendar.js";
+import { chatRoutes } from "./routes/chat.js";
 import { integrationRoutes } from "./routes/integrations.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { slackRoutes } from "./routes/slack.js";
 import { suggestionRoutes } from "./routes/suggestions.js";
+import { syncRoutes } from "./routes/sync.js";
+import { routineRoutes } from "./routes/routines.js";
 import { taskRoutes } from "./routes/tasks.js";
+import { userRoutes } from "./routes/users.js";
 import { wsRoutes } from "./routes/ws.js";
 
 declare module "fastify" {
@@ -63,12 +70,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.get("/health", async () => ({ ok: true, service: "focus-server" }));
+  app.get("/openapi.json", async () => openApiDocument());
 
   await app.register(authRoutes);
+  await app.register(userRoutes);
   await app.register(taskRoutes);
+  await app.register(routineRoutes);
+  await app.register(syncRoutes);
   await app.register(contextRoutes);
   await app.register(attachmentRoutes);
+  await app.register(deviceRoutes);
   await app.register(integrationRoutes);
+  await app.register(calendarRoutes);
+  await app.register(chatRoutes);
   await app.register(slackRoutes);
   await app.register(suggestionRoutes);
   await app.register(memoryRoutes);

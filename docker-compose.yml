@@ -1,0 +1,37 @@
+# Local infra for Focus: Postgres (with pgvector) + Redis.
+# Usage:  docker compose up -d
+# Then set in apps/server/.env:
+#   DATABASE_URL=postgresql://focus:focus@localhost:5432/focus
+#   REDIS_URL=redis://localhost:6379
+# The server creates the pgvector extension and all tables on boot — no manual
+# migration step. Data persists in named volumes across restarts.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: focus
+      POSTGRES_PASSWORD: focus
+      POSTGRES_DB: focus
+    ports:
+      - "5432:5432"
+    volumes:
+      - focus-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U focus -d focus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - focus-redisdata:/data
+
+volumes:
+  focus-pgdata:
+  focus-redisdata:

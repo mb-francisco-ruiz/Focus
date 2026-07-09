@@ -1,5 +1,5 @@
 import type { Task } from "@focus/shared";
-import { createTask } from "./api";
+import { createTask, currentUserId } from "./api";
 import { isTauri } from "./tauri-env";
 
 /**
@@ -32,6 +32,11 @@ async function makeStore(): Promise<KV> {
 
 const store = makeStore();
 
+/** Cache entries are per-account — switching users must never leak tasks. */
+function scoped(key: string): string {
+  return `${key}.${currentUserId() ?? "anon"}`;
+}
+
 export interface PendingCapture {
   clientId: string;
   rawInput: string;
@@ -39,24 +44,24 @@ export interface PendingCapture {
 }
 
 export async function loadCachedTasks(): Promise<Task[]> {
-  return (await (await store).get<Task[]>("tasks")) ?? [];
+  return (await (await store).get<Task[]>(scoped("tasks"))) ?? [];
 }
 
 export async function saveCachedTasks(tasks: Task[]): Promise<void> {
-  await (await store).set("tasks", tasks);
+  await (await store).set(scoped("tasks"), tasks);
 }
 
 export async function queueCapture(capture: PendingCapture): Promise<void> {
   const kv = await store;
-  const pending = (await kv.get<PendingCapture[]>("pendingCaptures")) ?? [];
+  const pending = (await kv.get<PendingCapture[]>(scoped("pendingCaptures"))) ?? [];
   pending.push(capture);
-  await kv.set("pendingCaptures", pending);
+  await kv.set(scoped("pendingCaptures"), pending);
 }
 
 /** Replay queued captures; clientId makes retries idempotent server-side. */
 export async function replayPendingCaptures(): Promise<Task[]> {
   const kv = await store;
-  const pending = (await kv.get<PendingCapture[]>("pendingCaptures")) ?? [];
+  const pending = (await kv.get<PendingCapture[]>(scoped("pendingCaptures"))) ?? [];
   const created: Task[] = [];
   const stillPending: PendingCapture[] = [];
   for (const capture of pending) {
@@ -66,6 +71,6 @@ export async function replayPendingCaptures(): Promise<Task[]> {
       stillPending.push(capture);
     }
   }
-  await kv.set("pendingCaptures", stillPending);
+  await kv.set(scoped("pendingCaptures"), stillPending);
   return created;
 }

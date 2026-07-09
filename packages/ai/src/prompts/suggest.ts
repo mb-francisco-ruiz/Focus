@@ -29,10 +29,18 @@ Content:
 ${input.body.slice(0, 3000)}
 """
 
-isTask = true ONLY when the user personally needs to do something: reply with a \
-decision, review something, pay, sign, book, prepare, attend to a request aimed at them.
-isTask = false for: newsletters, promotions, notifications, receipts, FYI/status \
-updates, automated reports, things already done, and anything addressed to a group \
-with no specific ask of the user.
-Set confidence accordingly (0-1). Title: short imperative phrasing of the action.`;
+isTask = true ONLY when a real person needs THIS user to personally do something: \
+reply with a decision, review/sign/pay something addressed to them, prepare for or \
+attend a specific commitment.
+
+isTask = false — be strict — for anything automated or one-to-many, even when it uses \
+urgent or personal-sounding wording ("for you", "your search", "action needed", \
+"don't miss"): marketing and advertising, promotions, price-drop / listing / deal \
+alerts, newsletters, digests, social notifications, receipts, order/shipping updates, \
+calendar invites from tools, FYI/status/automated reports, and no-reply senders. \
+A machine-generated notification is NEVER a task, however relevant its topic. \
+When unsure, prefer false.
+
+Set confidence accordingly (0-1). Title: short imperative phrasing of the action, \
+in the same language as the email/message.`;
 }

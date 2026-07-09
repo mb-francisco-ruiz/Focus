@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - packages/*
+  # Standalone, user-installed tool with its own node_modules (run directly by
+  # Claude Desktop/Code) — kept out of the pnpm workspace, like the desktop sidecar.
+  - "!apps/mcp"
 
 onlyBuiltDependencies:
   - esbuild

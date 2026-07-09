@@ -8,6 +8,8 @@
 export function enrichPrompt(input: {
   rawInput: string;
   now: string; // ISO datetime, user's timezone
+  /** The user's own category list; sphere MUST be one of these. */
+  spheres: string[];
   contextItems?: string[];
   memoryContext?: string;
 }): string {
@@ -28,18 +30,21 @@ ${input.rawInput}
 """
 ${context}
 Produce the structured enrichment, weighing the attached context as much as the
-original text — new context may raise or lower urgency or change the deadline:
-- title: short imperative phrasing of the task itself
-- sphere: work | personal (anything not job-related — family, errands, health — is personal)
+original text — new context may raise or lower urgency or change the deadline.
+IMPORTANT: keep the user's original language throughout — if the task is in
+Spanish, the title and tags must be in Spanish. Never translate, and never add
+notes or parentheticals in another language.
+- title: short imperative phrasing of the task itself, in the task's own language
+- sphere: exactly one of: ${input.spheres.join(" | ")} — the user's own categories; \
+pick the best fit, never invent a new one
 - tags: up to 5 lowercase topical tags
 - dueAt: explicit or strongly implied deadline as ISO datetime, else null. \
-"before Friday" means the upcoming Friday end of day.
+"before Friday" means the upcoming Friday end of day. The current datetime above \
+is the user's LOCAL time — express dueAt with the matching UTC offset, never "Z", \
+so "end of day" stays on the right calendar day.
 - priority + priorityScore (0-100): urgency from deadline proximity and \
 importance signals in the text and context (who is asking, what it blocks). \
 P1 >= 70 high (today/tomorrow or blocking others), P2 >= 40 medium (this week), \
 P3 otherwise (low).
-- reasoning: one sentence.
-- nextStep: one short, concrete, actionable next step for the user \
-(e.g. "Reply to Guillaume confirming the deck outline"), or null if the task \
-itself is already the atomic action.`;
+- reasoning: one sentence.`;
 }

@@ -4,11 +4,11 @@ import type { LanguageModel } from "ai";
 import type { z } from "zod";
 import { routeFor, type Capability, type CapabilityRoute } from "./config.js";
 
-function resolveModel(route: CapabilityRoute): LanguageModel {
+function resolveModel(route: CapabilityRoute, apiKey?: string): LanguageModel {
   switch (route.provider) {
     case "google": {
       const google = createGoogleGenerativeAI({
-        apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+        apiKey: apiKey ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY,
       });
       return google(route.model);
     }
@@ -39,13 +39,15 @@ export async function generateStructured<T>(
   capability: Capability,
   schema: z.ZodType<T>,
   prompt: string,
+  opts: { abortSignal?: AbortSignal; apiKey?: string } = {},
 ): Promise<T> {
   const route = routeFor(capability);
   const started = performance.now();
   const result = await generateObject({
-    model: resolveModel(route),
+    model: resolveModel(route, opts.apiKey),
     schema,
     prompt,
+    abortSignal: opts.abortSignal,
   });
   logger({
     capability,

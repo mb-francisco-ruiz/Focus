@@ -1,8 +1,8 @@
 import { and, inArray } from "drizzle-orm";
 import { digestPrompt, generateStructured } from "@focus/ai";
 import { z } from "zod";
-import { env } from "../config.js";
 import { db, schema } from "../db/index.js";
+import { aiKeyFor } from "./ai-key.js";
 import { notify } from "./notify.js";
 import { PRIORITY_ORDER } from "./serialize.js";
 
@@ -10,10 +10,10 @@ const DigestText = z.object({ text: z.string() });
 
 /** Morning digest (PLAN.md §5.4): one AI-written notification per user. */
 export async function sendMorningDigests(): Promise<void> {
-  if (!env.GOOGLE_GENERATIVE_AI_API_KEY) return;
-
   const users = await db.query.users.findMany();
   for (const user of users) {
+    const apiKey = await aiKeyFor(user.id);
+    if (!apiKey) continue;
     const open = await db.query.tasks.findMany({
       where: and(
         inArray(schema.tasks.status, ["inbox", "active", "waiting"]),
@@ -44,6 +44,7 @@ export async function sendMorningDigests(): Promise<void> {
         dueToday,
         overdue,
       }),
+      { apiKey },
     );
     await notify(user.id, "digest", "Your day ahead", text);
   }

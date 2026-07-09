@@ -15,9 +15,6 @@ const Env = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
-  // Interim single-user credentials until Google/Slack OAuth (Phase 2).
-  AUTH_USERNAME: z.string().min(1),
-  AUTH_PASSWORD: z.string().min(1),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
 
   /** Where browsers reach this server (OAuth redirects, Slack events). */
@@ -29,6 +26,16 @@ const Env = z.object({
   SLACK_CLIENT_ID: z.string().optional(),
   SLACK_CLIENT_SECRET: z.string().optional(),
   SLACK_SIGNING_SECRET: z.string().optional(),
+  // Firebase Cloud Messaging HTTP v1. If unset, push delivery is skipped.
+  FCM_PROJECT_ID: z.string().optional(),
+  FCM_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  // Gmail real-time push (Cloud Pub/Sub). If unset, hourly polling is used.
+  GMAIL_PUBSUB_TOPIC: z.string().optional(),
+  // AWS S3 for avatars/attachments — Postgres storage until these are set.
+  AWS_REGION: z.string().optional(),
+  AWS_S3_BUCKET: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof Env>;
