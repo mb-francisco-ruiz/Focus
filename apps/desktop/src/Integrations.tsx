@@ -5,6 +5,7 @@ import {
   getProfile,
   googleConnectUrl,
   listIntegrations,
+  setCalendarAccount,
   setIntegrationSphere,
   slackConnectUrl,
 } from "./api";
@@ -23,6 +24,7 @@ async function openExternal(url: string): Promise<void> {
 export default function Integrations() {
   const [accounts, setAccounts] = useState<IntegrationAccountInfo[]>([]);
   const [spheres, setSpheres] = useState<string[]>([]);
+  const [calAccount, setCalAccount] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
   const [slackReady, setSlackReady] = useState(false);
 
@@ -38,7 +40,12 @@ export default function Integrations() {
 
   useEffect(() => {
     refresh();
-    void getProfile().then((p) => setSpheres(p.spheres)).catch(() => {});
+    void getProfile()
+      .then((p) => {
+        setSpheres(p.spheres);
+        setCalAccount(p.calendarAccountId);
+      })
+      .catch(() => {});
     // OAuth finishes in the browser; re-check when the app regains focus.
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
@@ -95,6 +102,34 @@ export default function Integrations() {
           </span>
         </div>
       ))}
+      {googleAccounts.length > 0 && (
+        <>
+          <div className="settings-row">
+            <span className="settings-label">Sync tasks to calendar</span>
+            <span className="settings-value">
+              <select
+                className="sphere-select"
+                title="Which Google account's calendar 'Add to Google Calendar' writes to"
+                value={calAccount ?? googleAccounts[0]!.id}
+                onChange={(e) => {
+                  setCalAccount(e.target.value);
+                  void setCalendarAccount(e.target.value).catch(() => refresh());
+                }}
+              >
+                {googleAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.externalId}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </div>
+          <p className="settings-hint">
+            Toggle “Add to Google Calendar” on a task to mirror it here. Reconnect the account
+            once above to grant calendar-write access.
+          </p>
+        </>
+      )}
       <div className="settings-row">
         <span className="settings-label">Slack</span>
         <span className="settings-value">

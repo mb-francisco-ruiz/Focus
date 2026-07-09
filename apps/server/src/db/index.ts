@@ -61,6 +61,11 @@ export async function ensureSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS blocked boolean NOT NULL DEFAULT false`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_api_key text`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_mode text NOT NULL DEFAULT 'server'`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS calendar_account_id text`);
+  await db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_has_time boolean NOT NULL DEFAULT false`);
+  await db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS calendar_sync boolean NOT NULL DEFAULT false`);
+  await db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS gcal_event_id text`);
+  await db.execute(sql`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS gcal_account_id text`);
 }
 
 export async function closeDb(): Promise<void> {

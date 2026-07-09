@@ -1,6 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq, inArray, not } from "drizzle-orm";
-import { SetAiKeyRequest, SetAiModeRequest, UpdateSpheresRequest, type UserProfile } from "@focus/shared";
+import {
+  SetAiKeyRequest,
+  SetAiModeRequest,
+  SetCalendarAccountRequest,
+  UpdateSpheresRequest,
+  type UserProfile,
+} from "@focus/shared";
 import { db, schema } from "../db/index.js";
 import { clearAiKeyCache } from "../lib/ai-key.js";
 import { encrypt } from "../lib/crypto.js";
@@ -18,6 +24,7 @@ function toProfile(user: typeof schema.users.$inferSelect): UserProfile {
     spheres: user.spheres,
     hasAiKey: Boolean(user.aiApiKey),
     aiMode: user.aiMode,
+    calendarAccountId: user.calendarAccountId,
   };
 }
 
@@ -46,6 +53,17 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     const [user] = await db
       .update(schema.users)
       .set({ aiMode: mode })
+      .where(eq(schema.users.id, req.userId))
+      .returning();
+    return toProfile(user!);
+  });
+
+  /** Choose which Google account task→calendar sync writes into (null = first). */
+  app.put("/users/me/calendar-account", { onRequest: [app.authenticate] }, async (req) => {
+    const { accountId } = SetCalendarAccountRequest.parse(req.body);
+    const [user] = await db
+      .update(schema.users)
+      .set({ calendarAccountId: accountId })
       .where(eq(schema.users.id, req.userId))
       .returning();
     return toProfile(user!);

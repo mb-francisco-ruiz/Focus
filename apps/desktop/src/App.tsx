@@ -281,6 +281,8 @@ function Workspace({ onLogout }: { onLogout: () => void }) {
         status: "inbox",
         dueAt: null,
         dueAtOverridden: false,
+        dueHasTime: false,
+        calendarSync: false,
         priority: "P2",
         priorityScore: 50,
         priorityOverridden: false,

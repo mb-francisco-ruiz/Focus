@@ -143,6 +143,12 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       await enqueue("recompute-task", { taskId: id });
     }
 
+    // Mirror onto Google Calendar when the task opts in and a change is relevant.
+    const syncKeys = ["calendarSync", "dueAt", "dueHasTime", "title", "status"];
+    if (row!.calendarSync && row!.dueAt && syncKeys.some((k) => k in patch)) {
+      await enqueue("calendar-sync", { taskId: id });
+    }
+
     const task = serializeTask(row!, await countsFor(id));
     publish(req.userId, { type: "task.upserted", task });
     return task;

@@ -47,6 +47,8 @@ export const users = pgTable("users", {
   /** Where this user's foreground AI runs: "server" (API) or "local" (their
    *  desktop's Claude Code via the sidecar). Server enrich routing honors it. */
   aiMode: text("ai_mode", { enum: ["server", "local"] }).notNull().default("server"),
+  /** integration_accounts.id (google) that task→calendar sync writes into. */
+  calendarAccountId: text("calendar_account_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -84,6 +86,13 @@ export const tasks = pgTable(
       .default("inbox"),
     dueAt: timestamp("due_at", { withTimezone: true }),
     dueAtOverridden: boolean("due_at_overridden").notNull().default(false),
+    /** Whether dueAt's clock time is meaningful (a timed event) vs date-only. */
+    dueHasTime: boolean("due_has_time").notNull().default(false),
+    /** Per-task opt-in to mirror this task onto Google Calendar. */
+    calendarSync: boolean("calendar_sync").notNull().default(false),
+    /** The Google Calendar event id + owning account, once synced. */
+    gcalEventId: text("gcal_event_id"),
+    gcalAccountId: text("gcal_account_id"),
     priority: text("priority", { enum: ["P1", "P2", "P3"] }).notNull().default("P2"),
     priorityScore: integer("priority_score").notNull().default(50),
     priorityOverridden: boolean("priority_overridden").notNull().default(false),

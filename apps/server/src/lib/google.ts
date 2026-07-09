@@ -13,6 +13,8 @@ export const GOOGLE_SCOPES = [
   "email",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+  // read+write of events — lets Focus push tasks onto the user's calendar
+  "https://www.googleapis.com/auth/calendar.events",
 ].join(" ");
 
 export function googleConfigured(): boolean {
@@ -171,6 +173,30 @@ export async function listEvents(
       allDay: !e.start!.dateTime,
       account,
     }));
+}
+
+/** A Google event start/end: `{dateTime}` (timed) or `{date}` (all-day). */
+export type EventBound = { dateTime: string } | { date: string };
+
+/**
+ * Create or update an event on the account's primary calendar. Pass `eventId`
+ * to patch an existing one, else a new event is created. Returns the event id.
+ * Throws on failure (e.g. 403 when the token lacks the calendar.events scope).
+ */
+export async function upsertEvent(
+  token: string,
+  opts: { eventId?: string | null; summary: string; start: EventBound; end: EventBound },
+): Promise<string> {
+  const base = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+  const url = opts.eventId ? `${base}/${opts.eventId}` : base;
+  const res = await fetch(url, {
+    method: opts.eventId ? "PATCH" : "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ summary: opts.summary, start: opts.start, end: opts.end }),
+  });
+  if (!res.ok) throw new Error(`calendar upsert failed: ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as { id: string };
+  return data.id;
 }
 
 // ---- Gmail ------------------------------------------------------------------

@@ -29,6 +29,7 @@ const PREFIX = env.NODE_ENV === "production" ? undefined : "bull-dev";
 
 export type JobName =
   | "enrich"
+  | "calendar-sync"
   | "recompute-task"
   | "recompute-all"
   | "gmail-poll"
@@ -81,6 +82,11 @@ export function startWorker(log: FastifyBaseLogger): Worker {
             if (!t || t.enrichedAt) break;
           }
           await enrichTask(data.taskId!);
+          break;
+        }
+        case "calendar-sync": {
+          const { syncTaskToCalendar } = await import("./calendar-sync.js");
+          await syncTaskToCalendar(data.taskId!);
           break;
         }
         case "recompute-task":

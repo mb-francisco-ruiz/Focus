@@ -21,6 +21,8 @@ export function serializeTask(
     status: row.status,
     dueAt: row.dueAt?.toISOString() ?? null,
     dueAtOverridden: row.dueAtOverridden,
+    dueHasTime: row.dueHasTime,
+    calendarSync: row.calendarSync,
     priority: row.priority,
     priorityScore: row.priorityScore,
     priorityOverridden: row.priorityOverridden,

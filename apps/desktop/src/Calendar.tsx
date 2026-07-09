@@ -198,6 +198,11 @@ export default function Calendar({
                   onClick={() => onOpenTask(t.id)}
                 >
                   <span className="mini-dot" style={{ background: PRIORITY_COLORS[t.priority] }} />
+                  {t.dueHasTime && t.dueAt && (
+                    <span className="cal-time">
+                      {new Date(t.dueAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  )}
                   {t.title}
                 </button>
               ))}

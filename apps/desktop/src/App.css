@@ -2062,3 +2062,14 @@ button.danger {
 }
 .mini-ctl-note { font-size: 12px; color: var(--text); white-space: pre-wrap; max-height: 92px; overflow-y: auto; }
 .mini-ctl-done { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+/* ---- due time ---- */
+.due-time { margin-left: 6px; width: auto; padding: 6px 8px; }
+.cal-time { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-right: 3px; }
+
+/* ---- Add to Google Calendar toggle ---- */
+.gcal-toggle.on {
+  background: rgba(63, 191, 111, 0.16);
+  color: #7be0a3;
+  border: 1px solid rgba(63, 191, 111, 0.4);
+}

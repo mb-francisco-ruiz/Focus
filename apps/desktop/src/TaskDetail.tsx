@@ -4,6 +4,22 @@ import { addNote, addSubtask, attachmentUrl, deleteSubtask, getContext, listSubt
 import { PRIORITIES, PRIORITY_LABELS } from "./colors";
 import { onSyncMessage } from "./sync";
 
+const pad = (n: number) => String(n).padStart(2, "0");
+const localDate = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const localTime = (iso: string) => {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+/** Combine a local date + optional time into a due patch (UTC ISO + hasTime). */
+function duePatch(date: string, time: string): UpdateTaskRequest {
+  if (!date) return { dueAt: null, dueHasTime: false };
+  const dt = new Date(`${date}T${time || "18:00"}`); // parsed as local time
+  return { dueAt: dt.toISOString(), dueHasTime: Boolean(time) };
+}
+
 /** Inline detail, expanded below a task row (multiple can be open at once). */
 export default function TaskDetail({
   task,
@@ -139,14 +155,29 @@ export default function TaskDetail({
             Due{" "}
             <input
               type="date"
-              value={task.dueAt ? task.dueAt.slice(0, 10) : ""}
+              value={task.dueAt ? localDate(task.dueAt) : ""}
               onChange={(e) =>
-                onPatch({
-                  dueAt: e.target.value ? new Date(`${e.target.value}T18:00:00`).toISOString() : null,
-                })
+                onPatch(duePatch(e.target.value, task.dueAt && task.dueHasTime ? localTime(task.dueAt) : ""))
               }
             />
+            {task.dueAt && (
+              <input
+                className="due-time"
+                type="time"
+                value={task.dueHasTime ? localTime(task.dueAt) : ""}
+                onChange={(e) => onPatch(duePatch(localDate(task.dueAt!), e.target.value))}
+              />
+            )}
           </label>
+          {task.dueAt && (
+            <button
+              className={`chip gcal-toggle ${task.calendarSync ? "on" : ""}`}
+              title={task.calendarSync ? "Syncing to Google Calendar" : "Add to Google Calendar"}
+              onClick={() => onPatch({ calendarSync: !task.calendarSync })}
+            >
+              {task.calendarSync ? "✓ Google Calendar" : "+ Google Calendar"}
+            </button>
+          )}
           {task.status === "done" && (
             <button className="chip" onClick={() => onPatch({ status: "inbox" })}>
               reopen

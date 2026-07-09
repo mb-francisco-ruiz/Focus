@@ -33,8 +33,13 @@ export const UserProfile = z.object({
   hasAiKey: z.boolean(),
   /** Where foreground AI runs: "server" (API) or "local" (desktop Claude Code). */
   aiMode: z.enum(["server", "local"]),
+  /** integration_accounts.id (google) that task→calendar sync writes into. */
+  calendarAccountId: z.string().nullable(),
 });
 export type UserProfile = z.infer<typeof UserProfile>;
+
+export const SetCalendarAccountRequest = z.object({ accountId: z.string().nullable() });
+export type SetCalendarAccountRequest = z.infer<typeof SetCalendarAccountRequest>;
 
 export const SetAiKeyRequest = z.object({ apiKey: z.string().min(10).max(200) });
 export type SetAiKeyRequest = z.infer<typeof SetAiKeyRequest>;
@@ -83,9 +88,11 @@ export const UpdateTaskRequest = z.object({
   sphere: Sphere.optional(),
   status: TaskStatus.optional(),
   dueAt: z.iso.datetime().nullable().optional(),
+  dueHasTime: z.boolean().optional(),
   priority: PriorityBucket.optional(),
   tags: z.array(z.string()).optional(),
   blocked: z.boolean().optional(),
+  calendarSync: z.boolean().optional(),
 });
 export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequest>;
 

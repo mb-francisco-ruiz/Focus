@@ -135,6 +135,13 @@ export async function setAiMode(mode: "server" | "local"): Promise<UserProfile> 
   });
 }
 
+export async function setCalendarAccount(accountId: string | null): Promise<UserProfile> {
+  return request<UserProfile>("/users/me/calendar-account", {
+    method: "PUT",
+    body: JSON.stringify({ accountId }),
+  });
+}
+
 export async function uploadAvatar(file: File): Promise<UserProfile> {
   const form = new FormData();
   form.append("file", file);

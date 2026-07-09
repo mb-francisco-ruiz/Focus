@@ -96,7 +96,13 @@ export default function TaskRow({
           {[
             hideSphere ? null : task.sphere,
             task.subtaskCount > 0 ? `${task.subtaskDone}/${task.subtaskCount}` : null,
-            task.dueAt ? `due ${new Date(task.dueAt).toLocaleDateString()}` : null,
+            task.dueAt
+              ? `due ${new Date(task.dueAt).toLocaleDateString()}${
+                  task.dueHasTime
+                    ? ` ${new Date(task.dueAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                    : ""
+                }`
+              : null,
             !task.enrichedAt && !done ? "classifying…" : null,
           ]
             .filter(Boolean)

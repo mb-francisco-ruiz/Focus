@@ -76,6 +76,8 @@ status        inbox | active | waiting | done | archived
 priority      P1 | P2 | P3   (displayed as High / Medium / Low)
 priorityScore 0–100 (sort key within/across buckets)
 dueAt         ISO datetime | null
+dueHasTime    bool — whether dueAt's clock time is meaningful (timed) vs date-only
+calendarSync  bool — user opted this task in to mirror onto Google Calendar
 tags          string[]
 aiSuggestion* legacy, always null now (feature disabled)
 subtaskCount / subtaskDone   aggregated live

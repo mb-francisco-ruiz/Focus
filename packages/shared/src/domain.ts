@@ -33,6 +33,10 @@ export const Task = z.object({
   status: TaskStatus,
   dueAt: z.iso.datetime().nullable(),
   dueAtOverridden: z.boolean(),
+  /** Whether dueAt's clock time is meaningful (timed) vs a date-only due. */
+  dueHasTime: z.boolean(),
+  /** User opted this task in to mirror onto Google Calendar. */
+  calendarSync: z.boolean(),
   priority: PriorityBucket,
   priorityScore: z.number().min(0).max(100),
   priorityOverridden: z.boolean(),
