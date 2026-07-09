@@ -31,3 +31,50 @@ pnpm dev:desktop                                 # Tauri app (first run compiles
 Runs with just Postgres + Redis + `JWT_SECRET`; AI and integrations are optional
 and light up as you add their keys. Full walkthrough, integration setup (Google /
 Slack OAuth apps, AI), and deployment: **[SETUP.md](SETUP.md)**.
+
+## Deploy — example: Railway
+
+The server ships a root `Dockerfile`, so any container host works. Here's the
+setup the project was built on, end to end.
+
+**1. Provision the two backing services.** In a new [Railway](https://railway.app)
+project, add a **PostgreSQL** database and a **Redis** database (both one click).
+Focus runs `CREATE EXTENSION IF NOT EXISTS vector` on boot, so Postgres needs
+**pgvector** available — Railway's Postgres image includes it (if yours doesn't,
+use a `pgvector/pgvector` image instead).
+
+**2. Add the server service** from this repo (Railway auto-detects the root
+`Dockerfile`). From the repo root you can also push directly with the CLI:
+
+```sh
+npm i -g @railway/cli
+railway login
+railway link           # pick the project
+railway up --service server
+```
+
+**3. Set the server's variables** (service → **Variables**). Reference the two
+databases so the URLs stay in sync, and add your own secret:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+JWT_SECRET=<openssl rand -hex 32>      # keep stable; also encrypts stored OAuth tokens
+NODE_ENV=production
+```
+
+**4. Expose it and set `PUBLIC_URL`.** Under the server's **Settings → Networking**,
+generate a domain, then add `PUBLIC_URL=https://<your-app>.up.railway.app`. That
+value is what OAuth redirects and Slack event URLs are built from, so integrations
+need it correct. No migration step — the schema is created on first boot.
+
+**5. Point clients at it.** Build the desktop app with the deployed URL:
+
+```sh
+echo 'VITE_FOCUS_API_URL=https://<your-app>.up.railway.app' > apps/desktop/.env
+pnpm --filter @focus/desktop tauri build
+```
+
+> Notes: the live-sync bus is in-process, so run a **single** server instance
+> (fine for personal/small use). Add integration keys (Google/Slack/AI) as
+> variables whenever you want those features — see [SETUP.md](SETUP.md#6-add-integrations-optional).
