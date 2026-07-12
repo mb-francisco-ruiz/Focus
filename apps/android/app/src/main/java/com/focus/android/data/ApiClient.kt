@@ -40,6 +40,9 @@ class ApiClient(
     suspend fun updateSpheres(spheres: List<String>): UpdateSpheresResponse =
         put("/users/me/spheres", UpdateSpheresRequest(spheres))
 
+    suspend fun setAiKey(apiKey: String): UserProfileDto =
+        put("/users/me/ai-key", SetAiKeyRequest(apiKey))
+
     suspend fun listTasks(): TaskListResponse = get("/tasks")
 
     suspend fun sync(since: String?): SyncResponse =
@@ -47,6 +50,9 @@ class ApiClient(
 
     suspend fun createTask(rawInput: String, clientId: String? = null): TaskDto =
         post("/tasks", CreateTaskRequest(rawInput, clientId))
+
+    suspend fun chat(messages: List<AssistantMessageDto>): ChatResponse =
+        post("/chat", ChatRequest(messages))
 
     suspend fun updateTask(id: String, patch: UpdateTaskRequest): TaskDto =
         patch("/tasks/$id", patch)

@@ -123,6 +123,30 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
           return compact(row!);
         },
       },
+      archive_task: {
+        description:
+          "Remove a task from active lists by archiving it. Use this instead of permanent deletion so the user can ask to restore it later.",
+        inputSchema: z.object({ id: z.string() }),
+        execute: async ({ id }) => {
+          const taskId = id as string;
+          const owned = await db.query.tasks.findFirst({
+            where: and(eq(schema.tasks.id, taskId), eq(schema.tasks.userId, userId)),
+          });
+          if (!owned) return { error: "task not found" };
+          const [row] = await db
+            .update(schema.tasks)
+            .set({ status: "archived", updatedAt: new Date() })
+            .where(eq(schema.tasks.id, taskId))
+            .returning();
+          await recordEvent(userId, "task.status_changed", taskId, {
+            via: "assistant",
+            from: owned.status,
+            to: "archived",
+          });
+          publish(userId, { type: "task.upserted", task: serializeTask(row!) });
+          return { ...compact(row!), recoverable: true };
+        },
+      },
       recall_memory: {
         description: "Recall what Focus has learned about the user (preferences, entities, patterns).",
         inputSchema: z.object({ query: z.string().optional() }),
@@ -167,7 +191,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     const system = `You are Focus, the user's personal work-and-life assistant. Today is ${now} (their timezone).
 Their task categories are: ${spheres.join(", ")}.
 Use the tools to read and manage their tasks, routines and memory — always act via tools rather than guessing.
-Be concise and practical. Reply in the user's language. When you change something, confirm briefly what you did.`;
+A single instruction may require several tool calls: complete every requested create, update and archive before replying.
+Treat delete/remove requests as recoverable archives. If the user corrects you later, restore the task with update_task status=inbox.
+Be concise and practical. Reply in the user's language. After changes, confirm each action in a short list so the user can spot and correct mistakes.`;
 
     try {
       const reply = await runAssistant({ system, messages, tools, apiKey });

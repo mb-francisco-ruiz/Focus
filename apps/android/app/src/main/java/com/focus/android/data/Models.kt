@@ -17,7 +17,12 @@ data class UserProfileDto(
     val displayName: String? = null,
     val avatarKey: String? = null,
     val spheres: List<String> = listOf("work", "personal"),
+    val hasAiKey: Boolean = false,
+    val aiMode: String = "server",
 )
+
+@Serializable
+data class SetAiKeyRequest(val apiKey: String)
 
 @Serializable
 data class UpdateSpheresRequest(val spheres: List<String>)
@@ -30,6 +35,8 @@ data class UpdateSpheresResponse(
     val avatarKey: String? = null,
     val spheres: List<String> = listOf("work", "personal"),
     val reassigned: Int,
+    val hasAiKey: Boolean = false,
+    val aiMode: String = "server",
 )
 
 @Serializable
@@ -90,6 +97,18 @@ data class CreateTaskRequest(
     val rawInput: String,
     val clientId: String? = null,
 )
+
+@Serializable
+data class AssistantMessageDto(
+    val role: String,
+    val content: String,
+)
+
+@Serializable
+data class ChatRequest(val messages: List<AssistantMessageDto>)
+
+@Serializable
+data class ChatResponse(val reply: String)
 
 @Serializable
 data class UpdateTaskRequest(

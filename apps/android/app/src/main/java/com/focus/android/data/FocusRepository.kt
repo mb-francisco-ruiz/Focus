@@ -170,6 +170,12 @@ class FocusRepository(
         }
     }
 
+    suspend fun chat(messages: List<AssistantMessageDto>): String {
+        val reply = api.chat(messages).reply
+        fullRefresh()
+        return reply
+    }
+
     suspend fun replayPendingCaptures() {
         for (pending in dao.pendingCaptures()) {
             runCatching {
@@ -240,9 +246,15 @@ class FocusRepository(
             displayName = updated.displayName,
             avatarKey = updated.avatarKey,
             spheres = updated.spheres,
+            hasAiKey = updated.hasAiKey,
+            aiMode = updated.aiMode,
         )
         mutableProfile.value = profile
         return profile
+    }
+
+    suspend fun setAiKey(apiKey: String) {
+        mutableProfile.value = api.setAiKey(apiKey)
     }
 
     suspend fun scanSuggestions() {

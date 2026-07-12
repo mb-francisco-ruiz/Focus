@@ -5,6 +5,19 @@ package com.focus.android.ui
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,14 +66,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.focus.android.data.AppState
+import com.focus.android.data.AssistantMessageDto
 import com.focus.android.data.ContextItemDto
 import com.focus.android.data.FocusRepository
 import com.focus.android.data.IntegrationListResponse
@@ -69,31 +91,47 @@ import com.focus.android.data.SuggestionDto
 import com.focus.android.data.TaskDto
 import com.focus.android.data.UpdateTaskRequest
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private enum class Screen(val title: String, val navLabel: String) {
-    Roadmap("Roadmap", "Roadmap"),
-    Todo("To do", "To do"),
-    Completed("Completed", "Done"),
-    Calendar("Calendar", "Calendar"),
-    Suggestions("Suggestions", "Inbox"),
-    Intelligence("Intelligence", "Intel"),
-    Settings("Settings", "Settings"),
+private enum class Screen(val title: String, val navLabel: String, val navIcon: String) {
+    Roadmap("Today", "Today", "◉"),
+    Todo("Tasks", "Tasks", "✓"),
+    Completed("Completed", "Done", "✓"),
+    Calendar("Calendar", "Calendar", "◇"),
+    Suggestions("Suggestions", "Inbox", "✦"),
+    Intelligence("Memory", "Memory", "◎"),
+    Settings("Settings", "Settings", "⌁"),
 }
 
+private enum class EntryPanel { None, NewTask, Assistant }
+
 private val FocusColors = darkColorScheme(
-    primary = Color(0xFFCDB4FF),
-    onPrimary = Color(0xFF241638),
-    secondary = Color(0xFF8EE6D2),
-    tertiary = Color(0xFFFFCF7A),
-    background = Color(0xFF0D0B12),
-    surface = Color(0xFF17131D),
-    surfaceVariant = Color(0xFF272230),
-    onSurface = Color(0xFFF3EDF7),
-    onSurfaceVariant = Color(0xFFC8C0D0),
-    outline = Color(0xFF7A7088),
-    error = Color(0xFFFF8A80),
+    primary = Color(0xFFAFC6FF),
+    onPrimary = Color(0xFF10234D),
+    secondary = Color(0xFF72E0C0),
+    tertiary = Color(0xFFFFCB77),
+    background = Color(0xFF080D18),
+    surface = Color(0xFF101827),
+    surfaceVariant = Color(0xFF182235),
+    onSurface = Color(0xFFF3F6FF),
+    onSurfaceVariant = Color(0xFFAEB9CD),
+    outline = Color(0xFF526079),
+    error = Color(0xFFFF8D8D),
+)
+
+private val FocusTypography = androidx.compose.material3.Typography(
+    displaySmall = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 40.sp, lineHeight = 44.sp),
+    headlineMedium = TextStyle(fontFamily = FontFamily.Serif, fontWeight = FontWeight.SemiBold, fontSize = 30.sp, lineHeight = 34.sp),
+    titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
+    titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp),
+    titleSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
+    bodyLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 16.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp, lineHeight = 20.sp),
+    labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+    labelMedium = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 12.sp),
+    labelSmall = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, fontSize = 10.sp),
 )
 
 @Composable
@@ -120,7 +158,7 @@ fun FocusApp(
         if (task != null) vm.selectTask(task)
     }
 
-    MaterialTheme(colorScheme = FocusColors) {
+    MaterialTheme(colorScheme = FocusColors, typography = FocusTypography) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             if (!state.loggedIn) {
                 LoginScreen(state, error, vm::login, vm::register)
@@ -233,17 +271,28 @@ private fun FocusShell(
                     .padding(padding),
             ) {
                 FocusHeader(state, screen)
-                SectionTabs(screen) {
-                    screen = it
-                    if (it == Screen.Suggestions) vm.loadSuggestions()
-                    if (it == Screen.Intelligence) vm.loadMemory()
+                if (screen in listOf(Screen.Roadmap, Screen.Todo, Screen.Completed, Screen.Intelligence)) {
+                    SectionTabs(screen) {
+                        screen = it
+                        if (it == Screen.Intelligence) vm.loadMemory()
+                    }
                 }
-                when (screen) {
-                    Screen.Roadmap, Screen.Todo, Screen.Completed -> TaskBoard(state, screen, vm)
-                    Screen.Calendar -> CalendarAgenda(state.tasks, vm)
-                    Screen.Suggestions -> SuggestionsScreen(vm)
-                    Screen.Intelligence -> IntelligenceScreen(vm)
-                    Screen.Settings -> SettingsScreen(state, vm)
+                AnimatedContent(
+                    targetState = screen,
+                    modifier = Modifier.weight(1f),
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 12 }) togetherWith
+                            (fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { -it / 16 })
+                    },
+                    label = "screen",
+                ) { activeScreen ->
+                    when (activeScreen) {
+                        Screen.Roadmap, Screen.Todo, Screen.Completed -> TaskBoard(state, activeScreen, vm)
+                        Screen.Calendar -> CalendarAgenda(state.tasks, vm)
+                        Screen.Suggestions -> SuggestionsScreen(vm)
+                        Screen.Intelligence -> IntelligenceScreen(vm)
+                        Screen.Settings -> SettingsScreen(state, vm)
+                    }
                 }
             }
         }
@@ -252,32 +301,36 @@ private fun FocusShell(
 
 @Composable
 private fun FocusHeader(state: AppState, screen: Screen) {
-    Column(Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 6.dp)) {
+    Column(Modifier.padding(start = 18.dp, top = 14.dp, end = 18.dp, bottom = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LogoMark(size = 28.dp)
-            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Focus", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
-                Text(screen.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+                Text(
+                    greeting(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(screen.title, style = MaterialTheme.typography.headlineMedium)
             }
             StatusPill(state.online)
         }
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricPill("${state.tasks.count { it.status != "done" && it.status != "archived" }} open")
-            MetricPill("${state.tasks.count { it.status == "done" }} done")
-            if (state.pendingCaptures > 0) MetricPill("${state.pendingCaptures} queued", accent = MaterialTheme.colorScheme.tertiary)
+        if (screen == Screen.Roadmap) {
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricPill("${state.tasks.count { it.status != "done" && it.status != "archived" }} active")
+                MetricPill("${state.tasks.count { it.status == "done" }} complete", accent = MaterialTheme.colorScheme.secondary)
+                if (state.pendingCaptures > 0) MetricPill("${state.pendingCaptures} queued", accent = MaterialTheme.colorScheme.tertiary)
+            }
         }
     }
 }
 
 @Composable
 private fun SectionTabs(current: Screen, onSelect: (Screen) -> Unit) {
-    val tabs = listOf(Screen.Roadmap, Screen.Todo, Screen.Completed, Screen.Intelligence)
+    val tabs = listOf(Screen.Completed, Screen.Intelligence)
     Row(
         Modifier
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 3.dp),
+            .padding(horizontal = 18.dp, vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         tabs.forEach { tab ->
@@ -293,7 +346,11 @@ private fun SectionTabs(current: Screen, onSelect: (Screen) -> Unit) {
 @Composable
 private fun TaskBoard(state: AppState, screen: Screen, vm: FocusViewModel) {
     var draft by rememberSaveable { mutableStateOf("") }
+    var assistantDraft by rememberSaveable { mutableStateOf("") }
     var sphere by rememberSaveable { mutableStateOf<String?>(null) }
+    var entryPanel by rememberSaveable { mutableStateOf(EntryPanel.None) }
+    val assistantMessages by vm.assistantMessages.collectAsState()
+    val assistantBusy by vm.assistantBusy.collectAsState()
     val tasks = state.tasks
         .filter { it.status != "archived" }
         .filter {
@@ -308,21 +365,48 @@ private fun TaskBoard(state: AppState, screen: Screen, vm: FocusViewModel) {
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (screen != Screen.Completed) {
+        if (screen == Screen.Roadmap) {
             item {
-                CaptureCard(
-                    draft = draft,
-                    onDraft = { draft = it },
-                    onAdd = {
-                        if (draft.isNotBlank()) {
-                            vm.capture(draft.trim())
-                            draft = ""
-                        }
-                    },
+                EntryActions(
+                    active = entryPanel,
+                    onNewTask = { entryPanel = if (entryPanel == EntryPanel.NewTask) EntryPanel.None else EntryPanel.NewTask },
+                    onAssistant = { entryPanel = if (entryPanel == EntryPanel.Assistant) EntryPanel.None else EntryPanel.Assistant },
                 )
+            }
+            when (entryPanel) {
+                EntryPanel.NewTask -> item {
+                    CaptureCard(
+                        draft = draft,
+                        onDraft = { draft = it },
+                        onClose = { entryPanel = EntryPanel.None },
+                        onAdd = {
+                            if (draft.isNotBlank()) {
+                                vm.capture(draft.trim())
+                                draft = ""
+                                entryPanel = EntryPanel.None
+                            }
+                        },
+                    )
+                }
+                EntryPanel.Assistant -> item {
+                    AssistantPanel(
+                        draft = assistantDraft,
+                        onDraft = { assistantDraft = it },
+                        messages = assistantMessages,
+                        busy = assistantBusy,
+                        onClose = { entryPanel = EntryPanel.None },
+                        onSend = {
+                            if (assistantDraft.isNotBlank()) {
+                                vm.sendAssistant(assistantDraft)
+                                assistantDraft = ""
+                            }
+                        },
+                    )
+                }
+                EntryPanel.None -> Unit
             }
         }
         item {
@@ -344,25 +428,175 @@ private fun TaskBoard(state: AppState, screen: Screen, vm: FocusViewModel) {
 }
 
 @Composable
-private fun CaptureCard(draft: String, onDraft: (String) -> Unit, onAdd: () -> Unit) {
-    SurfaceCard(contentPadding = 10.dp, cornerRadius = 16.dp) {
-        Text("Quick capture", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(6.dp))
+private fun EntryActions(active: EntryPanel, onNewTask: () -> Unit, onAssistant: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button(
+            onClick = onNewTask,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(18.dp),
+        ) { Text(if (active == EntryPanel.NewTask) "Close" else "+ New task") }
+        Button(
+            onClick = onAssistant,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(18.dp),
+        ) { Text(if (active == EntryPanel.Assistant) "Close assistant" else "✦ Ask Focus") }
+    }
+}
+
+@Composable
+private fun CaptureCard(draft: String, onDraft: (String) -> Unit, onClose: () -> Unit, onAdd: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xFF1D3154), Color(0xFF222B48), Color(0xFF242340)),
+                ),
+            )
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(24.dp))
+            .animateContentSize()
+            .padding(16.dp),
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("NEW TASK", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onClose) { Text("Cancel") }
+            }
+            Text("What do you need to do?", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = onDraft,
+                    placeholder = { Text("Call Marta tomorrow at 10") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = onAdd,
+                    enabled = draft.isNotBlank(),
+                    shape = CircleShape,
+                    modifier = Modifier.size(52.dp),
+                    contentPadding = PaddingValues(0.dp),
+                ) { Text("↑", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantPanel(
+    draft: String,
+    onDraft: (String) -> Unit,
+    messages: List<AssistantMessageDto>,
+    busy: Boolean,
+    onClose: () -> Unit,
+    onSend: () -> Unit,
+) {
+    val voice = rememberVoiceCapture(onDraft)
+    val listening = voice.stage == VoiceStage.Listening
+    val pulse = rememberInfiniteTransition(label = "assistantVoicePulse")
+    val micScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = if (listening) 1.08f else 1f,
+        animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
+        label = "assistantMicScale",
+    )
+    SurfaceCard(contentPadding = 14.dp, cornerRadius = 22.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("FOCUS ASSISTANT", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelSmall)
+                Text("Change several tasks at once", style = MaterialTheme.typography.titleMedium)
+            }
+            TextButton(onClick = onClose) { Text("Close") }
+        }
+        Text(
+            "Tell me what changed. I can create, reprioritise, complete or remove tasks, then confirm every action.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (messages.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            messages.takeLast(6).forEach { message ->
+                AssistantBubble(message)
+                Spacer(Modifier.height(7.dp))
+            }
+        }
+        if (busy) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text("Focus is updating your tasks…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        if (voice.message != null || listening || voice.stage == VoiceStage.Processing) {
+            Text(
+                voice.message ?: if (listening) "Listening… tap stop when finished." else "Transcribing…",
+                color = if (voice.stage == VoiceStage.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Spacer(Modifier.height(6.dp))
+        }
+        Row(verticalAlignment = Alignment.Bottom) {
             OutlinedTextField(
                 value = draft,
                 onValueChange = onDraft,
-                placeholder = { Text("Add a task in natural language") },
+                placeholder = { Text("What changed?") },
                 modifier = Modifier.weight(1f),
-                singleLine = true,
-                shape = RoundedCornerShape(13.dp),
+                minLines = 2,
+                maxLines = 5,
+                shape = RoundedCornerShape(16.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = onAdd,
-                shape = CircleShape,
-                contentPadding = PaddingValues(horizontal = 15.dp, vertical = 10.dp),
-            ) { Text("Add", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier
+                        .scale(micScale)
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(if (listening) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f))
+                        .border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.55f), CircleShape)
+                        .semantics { contentDescription = if (listening) "Stop assistant voice input" else "Start assistant voice input" }
+                        .clickable { if (listening) voice.stop() else voice.start() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (listening) "■" else "MIC", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = onSend,
+                    enabled = draft.isNotBlank() && !busy,
+                    modifier = Modifier.size(46.dp),
+                    shape = CircleShape,
+                    contentPadding = PaddingValues(0.dp),
+                ) { Text("↑", fontSize = 21.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantBubble(message: AssistantMessageDto) {
+    val assistant = message.role == "assistant"
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (assistant) MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f)
+                else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            )
+            .padding(11.dp),
+    ) {
+        Column {
+            Text(if (assistant) "Focus" else "You", color = if (assistant) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(3.dp))
+            Text(message.content, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -372,35 +606,35 @@ private fun TaskCard(task: TaskDto, vm: FocusViewModel) {
     val priorityColor = priorityColor(task.priority)
     Card(
         onClick = { vm.selectTask(task) },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.animateContentSize(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .width(3.dp)
-                    .height(44.dp)
+                    .height(48.dp)
                     .clip(CircleShape)
                     .background(priorityColor),
             )
-            Spacer(Modifier.width(9.dp))
+            Spacer(Modifier.width(12.dp))
             TaskCheck(
                 checked = task.status == "done",
                 onClick = {
                     vm.updateTask(task.id, UpdateTaskRequest(status = if (task.status == "done") "inbox" else "done"))
                 },
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     task.title,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleSmall,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(taskMeta(task), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
             }
             Spacer(Modifier.width(8.dp))
@@ -436,21 +670,41 @@ private fun TaskDetailScreen(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onClose) { Text("Back") }
+                TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text("← Back") }
                 Spacer(Modifier.weight(1f))
                 PriorityPill(task.priority)
             }
-            Text("Task detail", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge)
-            Text(task.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-        }
-        item {
-            SurfaceCard {
-                OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(10.dp))
-                Button(onClick = { vm.updateTask(task.id, UpdateTaskRequest(title = title)) }, shape = CircleShape) {
-                    Text("Save title")
+            Spacer(Modifier.height(8.dp))
+            Text("TASK", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.titleLarge,
+                minLines = 2,
+                maxLines = 5,
+                shape = RoundedCornerShape(18.dp),
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = { vm.updateTask(task.id, UpdateTaskRequest(title = title)) },
+                    enabled = title.isNotBlank() && title != task.title,
+                    shape = CircleShape,
+                ) {
+                    Text("Save changes")
                 }
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    onClick = {
+                        vm.updateTask(
+                            task.id,
+                            UpdateTaskRequest(status = if (task.status == "done") "inbox" else "done"),
+                        )
+                    },
+                ) { Text(if (task.status == "done") "Reopen" else "Mark complete") }
             }
+            Text(taskMeta(task), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
         }
         item {
             SurfaceCard {
@@ -660,6 +914,7 @@ private fun IntelligenceScreen(vm: FocusViewModel) {
 @Composable
 private fun SettingsScreen(state: AppState, vm: FocusViewModel) {
     var apiUrl by rememberSaveable(state.apiUrl) { mutableStateOf(state.apiUrl) }
+    var aiKey by rememberSaveable { mutableStateOf("") }
     var spheresText by rememberSaveable(state.spheres) { mutableStateOf(state.spheres.joinToString(", ")) }
     var integrations by remember { mutableStateOf<IntegrationListResponse?>(null) }
     val digest by vm.slackDigest.collectAsState()
@@ -697,6 +952,38 @@ private fun SettingsScreen(state: AppState, vm: FocusViewModel) {
                     val spheres = spheresText.split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
                     if (spheres.isNotEmpty()) vm.updateSpheres(spheres)
                 }, shape = CircleShape) { Text("Save categories") }
+            }
+        }
+        item {
+            SurfaceCard {
+                SectionTitle("Focus assistant")
+                Text(
+                    if (state.profile?.hasAiKey == true) "Gemini is connected." else "Add a Gemini API key to use Ask Focus.",
+                    color = if (state.profile?.hasAiKey == true) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = aiKey,
+                    onValueChange = { aiKey = it },
+                    label = { Text("Gemini API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        vm.setAiKey(aiKey.trim())
+                        aiKey = ""
+                    },
+                    enabled = aiKey.isNotBlank(),
+                    shape = CircleShape,
+                ) { Text("Connect assistant") }
+                Text(
+                    "The key is encrypted by your Focus server and is never returned to the app.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         item {
@@ -748,39 +1035,43 @@ private fun SettingsScreen(state: AppState, vm: FocusViewModel) {
 @Composable
 private fun FocusBottomBar(current: Screen, suggestionCount: Int, onSelect: (Screen) -> Unit) {
     val items = listOf(Screen.Roadmap, Screen.Todo, Screen.Calendar, Screen.Suggestions, Screen.Settings)
-    Surface(color = Color(0xFF17131D), shadowElevation = 10.dp) {
+    Surface(color = Color(0xFF0E1523), shadowElevation = 16.dp) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(62.dp)
-                .padding(horizontal = 4.dp, vertical = 6.dp),
+                .height(70.dp)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
                 val selected = current == item
+                val itemBackground by animateColorAsState(
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.13f) else Color.Transparent,
+                    animationSpec = tween(180),
+                    label = "navBackground",
+                )
                 Column(
                     Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(itemBackground)
                         .clickable { onSelect(item) }
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Box(
-                        Modifier
-                            .width(30.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                    Text(
+                        item.navIcon,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(1.dp))
                     Text(
                         if (item == Screen.Suggestions && suggestionCount > 0) "Inbox $suggestionCount" else item.navLabel,
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -798,7 +1089,7 @@ private fun SurfaceCard(
     Card(
         modifier.fillMaxWidth(),
         shape = RoundedCornerShape(cornerRadius),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(Modifier.padding(contentPadding), content = content)
@@ -807,13 +1098,23 @@ private fun SurfaceCard(
 
 @Composable
 private fun Pill(text: String, selected: Boolean, onClick: () -> Unit) {
+    val background by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = tween(180),
+        label = "pillBackground",
+    )
+    val border by animateColorAsState(
+        if (selected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.72f),
+        animationSpec = tween(180),
+        label = "pillBorder",
+    )
     Box(
         Modifier
-            .height(30.dp)
+            .height(34.dp)
             .widthIn(min = 46.dp)
             .clip(CircleShape)
-            .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-            .border(1.dp, if (selected) Color.Transparent else MaterialTheme.colorScheme.outline, CircleShape)
+            .background(background)
+            .border(1.dp, border, CircleShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp),
         contentAlignment = Alignment.Center,
@@ -918,10 +1219,16 @@ private fun EmptyState(text: String) {
 }
 
 private fun priorityColor(priority: String): Color = when (priority) {
-    "P1" -> Color(0xFFFF7A70)
-    "P2" -> Color(0xFFFFC86B)
-    "P3" -> Color(0xFF9AA0A6)
-    else -> Color(0xFF9AA0A6)
+    "P1" -> Color(0xFFFF8D8D)
+    "P2" -> Color(0xFFFFCB77)
+    "P3" -> Color(0xFF91A0B8)
+    else -> Color(0xFF91A0B8)
+}
+
+private fun greeting(): String = when (LocalTime.now().hour) {
+    in 5..11 -> "GOOD MORNING · FOCUS"
+    in 12..17 -> "GOOD AFTERNOON · FOCUS"
+    else -> "GOOD EVENING · FOCUS"
 }
 
 private fun taskMeta(task: TaskDto): String =

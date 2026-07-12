@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.focus.android.FocusApplication
 import com.focus.android.data.AppState
+import com.focus.android.data.AssistantMessageDto
 import com.focus.android.data.ContextItemDto
 import com.focus.android.data.FocusRepository
 import com.focus.android.data.MemoryRecordDto
@@ -46,6 +47,10 @@ class FocusViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var error = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
         private set
+    var assistantMessages = kotlinx.coroutines.flow.MutableStateFlow<List<AssistantMessageDto>>(emptyList())
+        private set
+    var assistantBusy = kotlinx.coroutines.flow.MutableStateFlow(false)
+        private set
 
     fun login(username: String, password: String, apiUrl: String) = launch {
         repository.setApiUrl(apiUrl)
@@ -68,6 +73,36 @@ class FocusViewModel(application: Application) : AndroidViewModel(application) {
 
     fun capture(rawInput: String) = launch {
         repository.capture(rawInput)
+    }
+
+    fun sendAssistant(content: String) {
+        val text = content.trim()
+        if (text.isBlank() || assistantBusy.value) return
+        val next = (assistantMessages.value + AssistantMessageDto("user", text)).takeLast(39)
+        assistantMessages.value = next
+        assistantBusy.value = true
+        viewModelScope.launch {
+            try {
+                val reply = repository.chat(next)
+                assistantMessages.value =
+                    (assistantMessages.value + AssistantMessageDto("assistant", reply)).takeLast(40)
+            } catch (failure: Exception) {
+                val detail = failure.message.orEmpty()
+                val friendly = when {
+                    "AI not configured" in detail ->
+                        "Ask Focus needs a Gemini API key. Add one in Settings → Focus assistant, then try again."
+                    "HTTP 503" in detail ->
+                        "The assistant is unavailable right now. Check Settings and the Focus server."
+                    else -> detail.ifBlank { "I couldn't reach the assistant. Check the server and try again." }
+                }
+                assistantMessages.value = assistantMessages.value + AssistantMessageDto(
+                    "assistant",
+                    friendly,
+                )
+            } finally {
+                assistantBusy.value = false
+            }
+        }
     }
 
     fun selectTask(task: TaskDto?) = launch {
@@ -144,6 +179,10 @@ class FocusViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateSpheres(spheres: List<String>) = launch {
         repository.updateSpheres(spheres)
+    }
+
+    fun setAiKey(apiKey: String) = launch {
+        repository.setAiKey(apiKey)
     }
 
     fun loadIntegrations(onLoaded: (com.focus.android.data.IntegrationListResponse) -> Unit) = launch {
