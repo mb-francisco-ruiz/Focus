@@ -47,11 +47,13 @@ class FocusViewModel(application: Application) : AndroidViewModel(application) {
     var error = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
         private set
 
-    fun login(username: String, password: String) = launch {
+    fun login(username: String, password: String, apiUrl: String) = launch {
+        repository.setApiUrl(apiUrl)
         repository.login(username, password)
     }
 
-    fun register(username: String, password: String) = launch {
+    fun register(username: String, password: String, apiUrl: String) = launch {
+        repository.setApiUrl(apiUrl)
         repository.register(username, password)
     }
 

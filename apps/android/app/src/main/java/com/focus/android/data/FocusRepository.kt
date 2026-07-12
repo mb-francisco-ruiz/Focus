@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.WebSocket
+import java.net.URI
 import java.security.SecureRandom
 import java.time.Instant
 
@@ -97,7 +98,14 @@ class FocusRepository(
     }
 
     suspend fun setApiUrl(url: String) {
-        session.saveApiUrl(url)
+        val normalized = url.trim().trimEnd('/')
+        val parsed = runCatching { URI(normalized) }.getOrNull()
+        require(
+            parsed != null &&
+                parsed.scheme in setOf("http", "https") &&
+                !parsed.host.isNullOrBlank(),
+        ) { "Server must be a valid http:// or https:// URL" }
+        session.saveApiUrl(normalized)
     }
 
     suspend fun refresh() {

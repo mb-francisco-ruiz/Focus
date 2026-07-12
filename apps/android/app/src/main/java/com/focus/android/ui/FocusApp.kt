@@ -123,7 +123,7 @@ fun FocusApp(
     MaterialTheme(colorScheme = FocusColors) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             if (!state.loggedIn) {
-                LoginScreen(state, error, vm::login, vm::register, vm::setApiUrl)
+                LoginScreen(state, error, vm::login, vm::register)
             } else {
                 FocusShell(state, vm, sharedImage) { sharedImage = null }
             }
@@ -135,9 +135,8 @@ fun FocusApp(
 private fun LoginScreen(
     state: AppState,
     error: String?,
-    onLogin: (String, String) -> Unit,
-    onRegister: (String, String) -> Unit,
-    onApiUrl: (String) -> Unit,
+    onLogin: (String, String, String) -> Unit,
+    onRegister: (String, String, String) -> Unit,
 ) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -168,16 +167,14 @@ private fun LoginScreen(
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
-                    onApiUrl(apiUrl)
-                    onLogin(username, password)
+                    onLogin(username, password, apiUrl)
                 },
                 shape = CircleShape,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
             ) { Text("Sign in", fontWeight = FontWeight.Bold) }
             TextButton(
                 onClick = {
-                    onApiUrl(apiUrl)
-                    onRegister(username, password)
+                    onRegister(username, password, apiUrl)
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Create account") }

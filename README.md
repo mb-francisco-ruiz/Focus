@@ -12,6 +12,7 @@ with an optional conversational assistant and computer-control mode.
 ## Layout
 
 - `apps/server` — Fastify API + workers, Drizzle/Postgres (pgvector), BullMQ/Redis
+- `apps/android` — native Android client; setup and local connectivity in [docs/ANDROID.md](docs/ANDROID.md)
 - `apps/desktop` — Tauri v2 + React client (macOS & Windows) + floating mini-orb
 - `apps/desktop/sidecar` — local Claude Code (Agent SDK) executor for on-device AI
 - `apps/mcp` — MCP server: manage Focus from Claude Code / Claude Desktop
